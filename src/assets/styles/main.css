@@ -1,0 +1,19 @@
+@import './reset.css';
+@import './theme.css';
+
+html {
+  background: var(--color-background);
+}
+
+body {
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at 82% 16%, rgba(81, 75, 190, 0.13), transparent 32rem),
+    radial-gradient(circle at 13% 85%, rgba(11, 148, 125, 0.08), transparent 28rem),
+    var(--color-background);
+}
+
+::selection {
+  color: var(--color-selection-text);
+  background: var(--color-accent);
+}
