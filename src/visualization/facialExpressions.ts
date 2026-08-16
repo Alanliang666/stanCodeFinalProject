@@ -6,22 +6,16 @@ import {
   type Object3D,
 } from 'three'
 import type { FacialMorphMode } from '@/types/avatar'
-import type { EmotionState } from '@/types/brain'
+import { clamp } from '@/utils/clamp'
 
-const FACIAL_EMOTIONS = ['happy', 'sad', 'angry', 'surprise'] as const
+const PROCEDURAL_FALLBACK_TARGETS = ['happy', 'sad', 'angry', 'surprise'] as const
 
-const MORPH_ALIASES: Record<(typeof FACIAL_EMOTIONS)[number], readonly string[]> = {
-  happy: ['happy', 'happiness', 'joy', 'smile', 'mouthsmile'],
-  sad: ['sad', 'sadness', 'sorrow', 'frown', 'mouthfrown'],
-  angry: ['angry', 'anger', 'mad', 'browdown'],
-  surprise: ['surprise', 'surprised', 'astonished', 'mouthopen', 'jawopen'],
-}
-
-export type EmotionMorphTargets = Record<EmotionState, number[]>
+export type MorphWeightMap = Readonly<Record<string, number | undefined>>
 
 export interface FacialMorphBinding {
   influences: number[]
-  targets: EmotionMorphTargets
+  meshName: string
+  morphTargetDictionary: Record<string, number>
 }
 
 export interface FacialMorphSetup {
@@ -29,20 +23,6 @@ export interface FacialMorphSetup {
   mode: FacialMorphMode
   meshCount: number
   targetCount: number
-}
-
-function createEmptyTargetMap(): EmotionMorphTargets {
-  return {
-    neutral: [],
-    happy: [],
-    sad: [],
-    angry: [],
-    surprise: [],
-  }
-}
-
-function normalizeMorphName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 function collectNativeBindings(scene: Object3D): FacialMorphBinding[] {
@@ -54,22 +34,21 @@ function collectNativeBindings(scene: Object3D): FacialMorphBinding[] {
       return
     }
 
-    const targets = createEmptyTargetMap()
     const dictionaryEntries = Object.entries(mesh.morphTargetDictionary)
 
-    for (const emotion of FACIAL_EMOTIONS) {
-      const aliases = MORPH_ALIASES[emotion]
-      targets[emotion] = dictionaryEntries
-        .filter(([name]) => {
-          const normalizedName = normalizeMorphName(name)
-          return aliases.some((alias) => normalizedName.includes(alias))
-        })
-        .map(([, index]) => index)
+    if (import.meta.env.DEV) {
+      console.info('[BrainAvatar] Native morph targets discovered', {
+        meshName: mesh.name,
+        targetCount: dictionaryEntries.length,
+        targetNames: dictionaryEntries.map(([name]) => name),
+      })
     }
 
-    if (FACIAL_EMOTIONS.some((emotion) => targets[emotion].length > 0)) {
-      bindings.push({ influences: mesh.morphTargetInfluences, targets })
-    }
+    bindings.push({
+      influences: mesh.morphTargetInfluences,
+      meshName: mesh.name,
+      morphTargetDictionary: mesh.morphTargetDictionary,
+    })
   })
 
   return bindings
@@ -122,7 +101,7 @@ function createProceduralTargets(mesh: Mesh): FacialMorphBinding | null {
     basePositions[index * 3 + 2] = basePosition.getZ(index)
   }
 
-  const attributes = FACIAL_EMOTIONS.map((emotion) => {
+  const attributes = PROCEDURAL_FALLBACK_TARGETS.map((emotion) => {
     const positions = new Float32Array(basePositions)
 
     for (let index = 0; index < basePosition.count; index += 1) {
@@ -174,13 +153,49 @@ function createProceduralTargets(mesh: Mesh): FacialMorphBinding | null {
 
   if (!mesh.morphTargetInfluences || !mesh.morphTargetDictionary) return null
 
-  const targets = createEmptyTargetMap()
-  for (const emotion of FACIAL_EMOTIONS) {
-    const targetIndex = mesh.morphTargetDictionary[emotion]
-    if (targetIndex !== undefined) targets[emotion] = [targetIndex]
+  return {
+    influences: mesh.morphTargetInfluences,
+    meshName: mesh.name,
+    morphTargetDictionary: mesh.morphTargetDictionary,
+  }
+}
+
+export function resolveAvailableMorphWeights(
+  bindings: readonly FacialMorphBinding[],
+  requestedWeights: MorphWeightMap,
+): Record<string, number> {
+  const resolvedWeights: Record<string, number> = {}
+
+  for (const [name, weight] of Object.entries(requestedWeights)) {
+    if (weight === undefined) continue
+    const isAvailable = bindings.some(
+      (binding) => binding.morphTargetDictionary[name] !== undefined,
+    )
+    if (isAvailable) resolvedWeights[name] = clamp(weight)
   }
 
-  return { influences: mesh.morphTargetInfluences, targets }
+  return resolvedWeights
+}
+
+export function smoothMorphTargetInfluences(
+  binding: FacialMorphBinding,
+  targetWeights: MorphWeightMap,
+  smoothing: number,
+): void {
+  const weightsByIndex = new Map<number, number>()
+
+  for (const [name, weight] of Object.entries(targetWeights)) {
+    if (weight === undefined) continue
+    const index = binding.morphTargetDictionary[name]
+    if (index !== undefined) weightsByIndex.set(index, clamp(weight))
+  }
+
+  for (let index = 0; index < binding.influences.length; index += 1) {
+    const currentWeight = binding.influences[index] ?? 0
+    const targetWeight = weightsByIndex.get(index) ?? 0
+    binding.influences[index] = currentWeight
+      + (targetWeight - currentWeight) * smoothing
+  }
 }
 
 export function setupFacialMorphTargets(scene: Object3D): FacialMorphSetup {
@@ -191,10 +206,8 @@ export function setupFacialMorphTargets(scene: Object3D): FacialMorphSetup {
       mode: 'native',
       meshCount: nativeBindings.length,
       targetCount: nativeBindings.reduce(
-        (total, binding) => total + FACIAL_EMOTIONS.reduce(
-          (count, emotion) => count + binding.targets[emotion].length,
-          0,
-        ),
+        (total, binding) => total
+          + Object.keys(binding.morphTargetDictionary ?? {}).length,
         0,
       ),
     }
@@ -212,6 +225,6 @@ export function setupFacialMorphTargets(scene: Object3D): FacialMorphSetup {
     bindings: proceduralBindings,
     mode: proceduralBindings.length > 0 ? 'procedural' : 'unavailable',
     meshCount: proceduralBindings.length,
-    targetCount: proceduralBindings.length * FACIAL_EMOTIONS.length,
+    targetCount: proceduralBindings.length * PROCEDURAL_FALLBACK_TARGETS.length,
   }
 }

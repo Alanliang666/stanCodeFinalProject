@@ -1,12 +1,9 @@
-# Avatar model attribution
+# FaceCap model attribution
 
-`avatar.glb` is the **Rigged Figure** sample from the Khronos Group
-[`glTF-Sample-Assets`](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/RiggedFigure)
-repository.
+`facecap.glb` is the model used by the official Three.js
+[`webgl_morphtargets_face`](https://threejs.org/examples/webgl_morphtargets_face.html)
+example. The vendored asset comes from the Three.js r185 examples directory:
 
-- Model and animation: Cesium
-- Copyright: © 2017 Cesium
-- License: [CC BY 4.0 International](https://creativecommons.org/licenses/by/4.0/)
+https://github.com/mrdoob/three.js/blob/r185/examples/models/gltf/facecap.glb
 
-The asset is included only as a development model for validating GLB loading,
-skinning, and future animation integration.
+Model by [Face Cap](https://www.bannaflak.com/face-cap).

@@ -1,26 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import AttentionMeter from '@/components/brain/AttentionMeter.vue'
-import CognitiveLoadMeter from '@/components/brain/CognitiveLoadMeter.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useBrainStore } from '@/stores/brainStore'
 import type { BrainConnectionStatus } from '@/types/brain'
+import { MUSE_EEG_CHANNELS } from '@/types/eeg'
 
 const brainStore = useBrainStore()
-const { prediction, connectionStatus, selectedDevice, lastUpdated } =
-  storeToRefs(brainStore)
+const { prediction, connectionStatus, lastUpdated } = storeToRefs(brainStore)
 
 const statusLabels: Record<BrainConnectionStatus, string> = {
-  disconnected: 'Offline',
-  connecting: 'Connecting',
-  connected: 'Live',
-  error: 'Error',
+  disconnected: 'Mock stream paused',
+  connecting: 'Starting mock stream',
+  connected: 'Mock stream active',
+  error: 'Mock stream error',
 }
 
 const lastUpdatedLabel = computed(() => {
-  if (lastUpdated.value === null) return 'Waiting for signal'
+  if (lastUpdated.value === null) return 'Waiting for mock data'
   return new Intl.DateTimeFormat('zh-TW', {
     hour: '2-digit',
     minute: '2-digit',
@@ -47,14 +45,14 @@ function toggleStream(): void {
 </script>
 
 <template>
-  <BaseCard eyebrow="Live neural telemetry" title="Brain state">
+  <BaseCard eyebrow="Frontend simulation" title="EEG Insights">
     <template #action>
       <BaseButton
         :variant="connectionStatus === 'connected' ? 'ghost' : 'primary'"
         :disabled="connectionStatus === 'connecting'"
         @click="toggleStream"
       >
-        {{ connectionStatus === 'connected' ? 'Pause stream' : 'Start stream' }}
+        {{ connectionStatus === 'connected' ? 'Pause mock' : 'Start mock' }}
       </BaseButton>
     </template>
 
@@ -67,7 +65,7 @@ function toggleStream(): void {
         />
         <span>{{ statusLabels[connectionStatus] }}</span>
       </div>
-      <span class="panel-meta__device">{{ selectedDevice }}</span>
+      <span class="panel-meta__device">Muse: Waiting for device</span>
       <time v-if="lastUpdated" :datetime="new Date(lastUpdated).toISOString()">
         Updated {{ lastUpdatedLabel }}
       </time>
@@ -75,43 +73,57 @@ function toggleStream(): void {
     </div>
 
     <div v-if="prediction" class="panel-content">
-      <div class="state-grid">
-        <article class="state-card state-card--cognition">
-          <span class="state-card__label">Cognitive state</span>
+      <div class="insight-grid">
+        <article class="insight-card insight-card--state">
+          <span>Current Cognitive State</span>
           <strong>{{ formatState(prediction.cognition.state) }}</strong>
-          <span>{{ toPercentage(prediction.cognition.confidence) }}% confidence</span>
         </article>
 
-        <article class="state-card state-card--emotion">
-          <span class="state-card__label">Emotion</span>
-          <strong>{{ formatState(prediction.emotion.state) }}</strong>
-          <span>{{ toPercentage(prediction.emotion.confidence) }}% confidence</span>
+        <article class="insight-card">
+          <span>Model Confidence</span>
+          <strong>{{ toPercentage(prediction.cognition.confidence) }}%</strong>
+        </article>
+
+        <article class="insight-card">
+          <span>Data Source</span>
+          <strong>Mock Data</strong>
+          <small>No physical Muse connected</small>
         </article>
       </div>
 
-      <div class="metrics">
-        <AttentionMeter :value="prediction.metrics.attention" />
-        <CognitiveLoadMeter :value="prediction.metrics.cognitiveLoad" />
-
-        <div class="metric-pills">
+      <section
+        class="muse-section"
+        aria-label="Muse 2 mock device information"
+      >
+        <div class="muse-section__heading">
           <div>
-            <span>Arousal</span>
-            <strong>{{ toPercentage(prediction.metrics.arousal) }}%</strong>
+            <span>Muse 2 EEG</span>
+            <strong>Waiting for device</strong>
+          </div>
+          <span class="muse-section__badge">Mock</span>
+        </div>
+
+        <div class="muse-section__details">
+          <div>
+            <span>Channels</span>
+            <strong>{{ MUSE_EEG_CHANNELS.join(' · ') }}</strong>
           </div>
           <div>
-            <span>Mind wandering</span>
-            <strong>{{ toPercentage(prediction.metrics.mindWandering) }}%</strong>
+            <span>Sampling Rate</span>
+            <strong>256 Hz</strong>
           </div>
         </div>
-      </div>
+      </section>
 
       <div class="eeg-section">
         <div class="section-heading">
           <div>
-            <span class="section-heading__eyebrow">10 channels</span>
+            <span class="section-heading__eyebrow">
+              {{ prediction.eeg.channels.length }} mock channels
+            </span>
             <h3>EEG activity</h3>
           </div>
-          <span>Normalized signal</span>
+          <span>Mock normalized value</span>
         </div>
 
         <div class="channel-grid">
@@ -122,10 +134,14 @@ function toggleStream(): void {
           >
             <div class="channel__header">
               <span>{{ channel.name }}</span>
-              <strong>{{ toPercentage(channel.value) }}</strong>
+              <strong>{{ channel.normalizedValue.toFixed(2) }}</strong>
             </div>
             <div class="channel__track" aria-hidden="true">
-              <span :style="{ width: `${toPercentage(channel.value)}%` }" />
+              <span
+                :style="{
+                  width: `${toPercentage(channel.normalizedValue)}%`,
+                }"
+              />
             </div>
           </div>
         </div>
@@ -134,7 +150,7 @@ function toggleStream(): void {
 
     <div v-else class="empty-state" aria-live="polite">
       <span class="empty-state__pulse" />
-      <p>Initializing neural signal…</p>
+      <p>Initializing mock prediction...</p>
     </div>
   </BaseCard>
 </template>
@@ -195,87 +211,120 @@ function toggleStream(): void {
   padding: 1.5rem;
 }
 
-.state-grid {
+.insight-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1.25fr repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
-.state-card {
+.insight-card {
   position: relative;
-  min-height: 7.6rem;
+  min-height: 7.2rem;
   overflow: hidden;
-  padding: 1.1rem;
+  padding: 1rem;
   border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 17px;
   background: rgba(148, 163, 184, 0.045);
 }
 
-.state-card::after {
+.insight-card::after {
   position: absolute;
   right: -2rem;
   bottom: -3.5rem;
   width: 8rem;
   height: 8rem;
   border-radius: 50%;
-  background: rgba(81, 230, 196, 0.1);
+  background: rgba(110, 114, 238, 0.09);
   filter: blur(8px);
   content: '';
 }
 
-.state-card--emotion::after {
-  background: rgba(139, 124, 246, 0.12);
+.insight-card--state::after {
+  background: rgba(81, 230, 196, 0.11);
 }
 
-.state-card__label,
-.state-card > span:last-child {
-  display: block;
-  color: #64748b;
-  font-size: 0.7rem;
-}
-
-.state-card strong {
+.insight-card > span,
+.insight-card small {
   position: relative;
   z-index: 1;
   display: block;
-  margin: 0.65rem 0 0.55rem;
+  color: #64748b;
+  font-size: 0.66rem;
+}
+
+.insight-card strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin: 0.65rem 0 0.5rem;
   color: #f8fafc;
-  font-size: clamp(1.35rem, 4vw, 1.85rem);
+  font-size: clamp(1.05rem, 2.4vw, 1.55rem);
   font-weight: 600;
   letter-spacing: -0.035em;
   text-transform: capitalize;
 }
 
-.metrics {
-  display: grid;
-  gap: 1.2rem;
-  margin: 1.5rem 0;
+.muse-section {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid rgba(81, 230, 196, 0.13);
+  border-radius: 16px;
+  background: rgba(81, 230, 196, 0.035);
 }
 
-.metric-pills {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.metric-pills > div {
+.muse-section__heading,
+.muse-section__details {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.8rem 0.9rem;
-  border-radius: 12px;
-  color: #64748b;
-  background: rgba(148, 163, 184, 0.055);
-  font-size: 0.7rem;
+  gap: 1rem;
 }
 
-.metric-pills strong {
+.muse-section__heading > div > span,
+.muse-section__details span {
+  display: block;
+  color: #64748b;
+  font-size: 0.64rem;
+}
+
+.muse-section__heading strong {
+  display: block;
+  margin-top: 0.25rem;
   color: #cbd5e1;
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.muse-section__badge {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(81, 230, 196, 0.2);
+  border-radius: 999px;
+  color: #8debd5;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.muse-section__details {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.muse-section__details > div:last-child {
+  text-align: right;
+}
+
+.muse-section__details strong {
+  display: block;
+  margin-top: 0.3rem;
+  color: #e2e8f0;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .eeg-section {
+  margin-top: 1.5rem;
   padding-top: 1.4rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);
 }
@@ -307,7 +356,7 @@ function toggleStream(): void {
 
 .channel-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.8rem 0.65rem;
 }
 
@@ -342,7 +391,7 @@ function toggleStream(): void {
 
 .empty-state {
   display: grid;
-  min-height: 30rem;
+  min-height: 23rem;
   place-content: center;
   justify-items: center;
   color: #64748b;
@@ -366,7 +415,7 @@ function toggleStream(): void {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 660px) {
   .panel-meta__device {
     display: none;
   }
@@ -375,8 +424,7 @@ function toggleStream(): void {
     padding: 1rem;
   }
 
-  .state-grid,
-  .metric-pills {
+  .insight-grid {
     grid-template-columns: 1fr;
   }
 

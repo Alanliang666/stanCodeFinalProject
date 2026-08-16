@@ -1,13 +1,13 @@
 import { clamp } from '@/utils/clamp'
 import {
   COGNITIVE_STATES,
-  EEG_CHANNEL_NAMES,
-  EMOTION_STATES,
   type BrainPrediction,
   type CognitiveState,
-  type EEGChannel,
-  type EmotionState,
 } from '@/types/brain'
+import {
+  MUSE_EEG_CHANNELS,
+  type MockEEGVisualizationChannel,
+} from '@/types/eeg'
 
 export type BrainPredictionListener = (prediction: BrainPrediction) => void
 
@@ -26,24 +26,15 @@ function createInitialPrediction(): BrainPrediction {
   return {
     timestamp: Date.now(),
     eeg: {
-      channels: EEG_CHANNEL_NAMES.map((name) => ({
+      kind: 'mock-normalized',
+      channels: MUSE_EEG_CHANNELS.map((name) => ({
         name,
-        value: 0.25 + Math.random() * 0.5,
+        normalizedValue: 0.25 + Math.random() * 0.5,
       })),
-    },
-    emotion: {
-      state: 'neutral',
-      confidence: 0.72,
     },
     cognition: {
       state: 'focused',
       confidence: 0.78,
-    },
-    metrics: {
-      attention: 0.74,
-      cognitiveLoad: 0.52,
-      arousal: 0.46,
-      mindWandering: 0.21,
     },
   }
 }
@@ -89,18 +80,15 @@ export class MockBrainService {
       timestamp: Date.now(),
       eeg: {
         channels: previous.eeg.channels.map(
-          (channel): EEGChannel => ({
+          (channel): MockEEGVisualizationChannel => ({
             ...channel,
-            value: randomWalk(channel.value, 0.24),
+            normalizedValue: randomWalk(
+              channel.normalizedValue,
+              0.24,
+            ),
           }),
         ),
-      },
-      emotion: {
-        state: nextState<EmotionState>(
-          previous.emotion.state,
-          EMOTION_STATES,
-        ),
-        confidence: randomWalk(previous.emotion.confidence, 0.15),
+        kind: 'mock-normalized',
       },
       cognition: {
         state: nextState<CognitiveState>(
@@ -108,12 +96,6 @@ export class MockBrainService {
           COGNITIVE_STATES,
         ),
         confidence: randomWalk(previous.cognition.confidence, 0.15),
-      },
-      metrics: {
-        attention: randomWalk(previous.metrics.attention, 0.16),
-        cognitiveLoad: randomWalk(previous.metrics.cognitiveLoad, 0.16),
-        arousal: randomWalk(previous.metrics.arousal, 0.16),
-        mindWandering: randomWalk(previous.metrics.mindWandering, 0.16),
       },
     }
   }

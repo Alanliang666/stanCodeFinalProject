@@ -13,3 +13,9 @@ export interface FacialMorphState {
   meshCount: number
   targetCount: number
 }
+
+export type CognitiveVisualState =
+  | 'neutral'
+  | 'focused'
+  | 'distracted'
+  | 'high_load'
