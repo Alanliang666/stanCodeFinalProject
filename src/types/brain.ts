@@ -1,10 +1,4 @@
-export const EMOTION_STATES = [
-  'neutral',
-  'happy',
-  'sad',
-  'angry',
-  'surprise',
-] as const
+import type { MockEEGVisualization } from '@/types/eeg'
 
 export const COGNITIVE_STATES = [
   'neutral',
@@ -15,51 +9,19 @@ export const COGNITIVE_STATES = [
   'relaxed',
 ] as const
 
-export const EEG_CHANNEL_NAMES = [
-  'Fp1',
-  'Fp2',
-  'F3',
-  'F4',
-  'C3',
-  'C4',
-  'P3',
-  'P4',
-  'O1',
-  'O2',
-] as const
-
-export type EmotionState = (typeof EMOTION_STATES)[number]
 export type CognitiveState = (typeof COGNITIVE_STATES)[number]
-export type EEGChannelName = (typeof EEG_CHANNEL_NAMES)[number]
 
-export interface EEGChannel {
-  name: EEGChannelName
-  value: number
+export interface CognitivePrediction {
+  state: CognitiveState
+  confidence: number
 }
 
 export interface BrainPrediction {
   timestamp: number
 
-  eeg: {
-    channels: EEGChannel[]
-  }
+  eeg: MockEEGVisualization
 
-  emotion: {
-    state: EmotionState
-    confidence: number
-  }
-
-  cognition: {
-    state: CognitiveState
-    confidence: number
-  }
-
-  metrics: {
-    attention: number
-    cognitiveLoad: number
-    arousal: number
-    mindWandering: number
-  }
+  cognition: CognitivePrediction
 }
 
 export type BrainConnectionStatus =

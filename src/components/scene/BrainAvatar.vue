@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { computed, toRef, watchEffect } from 'vue'
-import { useLoader } from '@tresjs/core'
+import { computed, onBeforeUnmount, toRef, watchEffect } from 'vue'
+import { useLoader, useTresContext } from '@tresjs/core'
+import type { WebGLRenderer } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import bundledAvatarUrl from '@/models/avatar.glb?url'
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
+import bundledAvatarUrl from '@/models/facecap.glb?url'
 import { useExpressionController } from '@/composables/useExpressionController'
-import type { AvatarLoadState, FacialMorphState } from '@/types/avatar'
-import type { EmotionState } from '@/types/brain'
+import type {
+  AvatarLoadState,
+  CognitiveVisualState,
+  FacialMorphState,
+} from '@/types/avatar'
 
 const props = withDefaults(
   defineProps<{
     modelUrl?: string
-    emotion?: EmotionState
-    emotionConfidence?: number
+    cognitiveVisualState?: CognitiveVisualState
   }>(),
   {
     modelUrl: bundledAvatarUrl,
-    emotion: 'neutral',
-    emotionConfidence: 0,
+    cognitiveVisualState: 'neutral',
   },
 )
 
@@ -25,19 +29,29 @@ const emit = defineEmits<{
   morphState: [state: FacialMorphState]
 }>()
 
+const { renderer } = useTresContext()
+const ktx2Loader = new KTX2Loader().detectSupport(
+  renderer.instance as WebGLRenderer,
+)
 const modelUrl = toRef(props, 'modelUrl')
 const { state: model, isLoading, error, progress } = useLoader(
   GLTFLoader,
   modelUrl,
+  {
+    extensions: (loader) => {
+      loader.setKTX2Loader?.(ktx2Loader)
+      loader.setMeshoptDecoder?.(MeshoptDecoder)
+    },
+  },
 )
 
+onBeforeUnmount(() => ktx2Loader.dispose())
+
 const avatarScene = computed(() => model.value?.scene ?? null)
-const emotion = toRef(props, 'emotion')
-const emotionConfidence = toRef(props, 'emotionConfidence')
+const cognitiveVisualState = toRef(props, 'cognitiveVisualState')
 const { morphState } = useExpressionController(
   avatarScene,
-  emotion,
-  emotionConfidence,
+  cognitiveVisualState,
 )
 
 watchEffect(() => {

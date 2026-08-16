@@ -6,21 +6,62 @@ import {
 } from 'vue'
 import { useLoop } from '@tresjs/core'
 import type { Object3D } from 'three'
-import type { FacialMorphState } from '@/types/avatar'
-import type { EmotionState } from '@/types/brain'
+import type { CognitiveVisualState, FacialMorphState } from '@/types/avatar'
 import { clamp } from '@/utils/clamp'
+import { getCognitiveFacePreset } from '@/visualization/cognitiveFacePresets'
 import {
+  resolveAvailableMorphWeights,
   setupFacialMorphTargets,
+  smoothMorphTargetInfluences,
   type FacialMorphBinding,
+  type MorphWeightMap,
 } from '@/visualization/facialExpressions'
 
 const EXPRESSION_SMOOTHING_SPEED = 7
 const MAX_FRAME_DELTA = 0.1
+const COGNITIVE_DEBUG_STEP_SECONDS = 3
+const BLINK_INTERVAL_SECONDS = 4.2
+const BLINK_DURATION_SECONDS = 0.18
+const COGNITIVE_DEBUG_STATES = [
+  'neutral',
+  'focused',
+  'distracted',
+  'high_load',
+] as const satisfies readonly CognitiveVisualState[]
+
+const isCognitiveDebugEnabled = import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('cognitiveDebug') === '1'
+
+function getBlinkLayer(elapsed: number): MorphWeightMap {
+  const phase = elapsed % BLINK_INTERVAL_SECONDS
+  const blinkStart = BLINK_INTERVAL_SECONDS - BLINK_DURATION_SECONDS
+  if (phase < blinkStart) return {}
+
+  const progress = (phase - blinkStart) / BLINK_DURATION_SECONDS
+  const weight = Math.sin(progress * Math.PI)
+  return {
+    eyeBlink_L: weight,
+    eyeBlink_R: weight,
+  }
+}
+
+function composeMorphLayers(...layers: readonly MorphWeightMap[]): MorphWeightMap {
+  const composed: Record<string, number> = {}
+
+  for (const layer of layers) {
+    for (const [name, weight] of Object.entries(layer)) {
+      if (weight === undefined) continue
+      composed[name] = clamp((composed[name] ?? 0) + weight)
+    }
+  }
+
+  return composed
+}
 
 export function useExpressionController(
   scene: Readonly<Ref<Object3D | null>>,
-  emotion: Readonly<Ref<EmotionState>>,
-  confidence: Readonly<Ref<number>>,
+  cognitiveVisualState: Readonly<Ref<CognitiveVisualState>>,
 ) {
   const bindings = shallowRef<FacialMorphBinding[]>([])
   const morphState = shallowRef<FacialMorphState>({
@@ -28,6 +69,7 @@ export function useExpressionController(
     meshCount: 0,
     targetCount: 0,
   })
+  let activeDebugState: CognitiveVisualState | null = null
 
   watch(
     scene,
@@ -58,23 +100,32 @@ export function useExpressionController(
   )
 
   const { onBeforeRender } = useLoop()
-  const { off } = onBeforeRender(({ delta }) => {
+  const { off } = onBeforeRender(({ delta, elapsed }) => {
     const frameDelta = Math.min(delta, MAX_FRAME_DELTA)
     const smoothing = 1 - Math.exp(-EXPRESSION_SMOOTHING_SPEED * frameDelta)
-    const expressionStrength = clamp(confidence.value)
+    const debugStateIndex = isCognitiveDebugEnabled
+      ? Math.floor(elapsed / COGNITIVE_DEBUG_STEP_SECONDS)
+        % COGNITIVE_DEBUG_STATES.length
+      : -1
+    const effectiveState = debugStateIndex >= 0
+      ? COGNITIVE_DEBUG_STATES[debugStateIndex]
+      : cognitiveVisualState.value
+    const cognitiveLayer = getCognitiveFacePreset(effectiveState)
+    const blinkLayer = getBlinkLayer(elapsed)
+    const composedWeights = composeMorphLayers(cognitiveLayer, blinkLayer)
+
+    if (isCognitiveDebugEnabled && effectiveState !== activeDebugState) {
+      activeDebugState = effectiveState
+      console.info(
+        '[CognitiveFace]',
+        `state: ${effectiveState}`,
+        'targets:',
+        resolveAvailableMorphWeights(bindings.value, cognitiveLayer),
+      )
+    }
 
     for (const binding of bindings.value) {
-      const activeTargets = binding.targets[emotion.value]
-
-      for (let index = 0; index < binding.influences.length; index += 1) {
-        const currentWeight = binding.influences[index] ?? 0
-        const targetWeight = activeTargets.includes(index)
-          ? expressionStrength
-          : 0
-
-        binding.influences[index] = currentWeight
-          + (targetWeight - currentWeight) * smoothing
-      }
+      smoothMorphTargetInfluences(binding, composedWeights, smoothing)
     }
   })
 

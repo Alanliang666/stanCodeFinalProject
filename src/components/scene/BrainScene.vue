@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
 import BrainAvatar from '@/components/scene/BrainAvatar.vue'
-import CognitiveStateObject from '@/components/scene/CognitiveStateObject.vue'
 import EEGHeadMap from '@/components/scene/eeg/EEGHeadMap.vue'
 import { useBrainStore } from '@/stores/brainStore'
 import type {
@@ -12,15 +11,14 @@ import type {
   FacialMorphState,
 } from '@/types/avatar'
 import {
-  EEG_CHANNEL_NAMES,
-  type CognitiveState,
-  type EEGChannel,
-  type EmotionState,
-} from '@/types/brain'
-import { mapCognitiveStateToMotion } from '@/visualization/cognitiveMotion'
+  MUSE_EEG_CHANNELS,
+  type MockEEGVisualizationChannel,
+} from '@/types/eeg'
+import { mapCognitivePredictionToVisualState } from '@/visualization/cognitiveVisualStateAdapter'
 
 const brainStore = useBrainStore()
 const { prediction } = storeToRefs(brainStore)
+const showDevelopmentStatus = import.meta.env.DEV
 const avatarLoadState = ref<AvatarLoadState>({
   status: 'loading',
   progress: 0,
@@ -31,43 +29,38 @@ const facialMorphState = ref<FacialMorphState>({
   targetCount: 0,
 })
 
-const emptyEEGChannels: EEGChannel[] = EEG_CHANNEL_NAMES.map((name) => ({
-  name,
-  value: 0,
-}))
+const emptyEEGChannels: MockEEGVisualizationChannel[] =
+  MUSE_EEG_CHANNELS.map((name) => ({
+    name,
+    normalizedValue: 0,
+  }))
 
-const cognitiveState = computed<CognitiveState>(
-  () => prediction.value?.cognition.state ?? 'neutral',
+const cognitivePrediction = computed(
+  () => prediction.value?.cognition ?? null,
 )
-const emotionState = computed<EmotionState>(
-  () => prediction.value?.emotion.state ?? 'neutral',
+const cognitiveVisualState = computed(() =>
+  mapCognitivePredictionToVisualState(cognitivePrediction.value),
 )
-const emotionConfidence = computed(
-  () => prediction.value?.emotion.confidence ?? 0,
-)
-const motionPreset = computed(() =>
-  mapCognitiveStateToMotion(cognitiveState.value),
-)
-const cognitiveStateLabel = computed(() =>
-  cognitiveState.value.replace(/([a-z])([A-Z])/g, '$1 $2'),
+const cognitiveVisualStateLabel = computed(() =>
+  cognitiveVisualState.value.replace('_', ' '),
 )
 const eegChannels = computed(
   () => prediction.value?.eeg.channels ?? emptyEEGChannels,
 )
-const averageEEGActivity = computed(() => {
+const averageMockEEGValue = computed(() => {
   const total = eegChannels.value.reduce(
-    (sum, channel) => sum + channel.value,
+    (sum, channel) => sum + channel.normalizedValue,
     0,
   )
-  return Math.round((total / eegChannels.value.length) * 100)
+  return (total / eegChannels.value.length).toFixed(2)
 })
 
 const sceneOrigin = new Vector3(0, 0, 0)
 const cameraPosition = new Vector3(0, 1.1, 7)
 const keyLightPosition = new Vector3(3, 4, 5)
 const fillLightPosition = new Vector3(-3, -1, 2)
-const avatarPosition = new Vector3(0, -0.72, 0.18)
-const avatarScale = new Vector3(0.84, 0.84, 0.84)
+const avatarPosition = new Vector3(-0.45, -0.18, 0.18)
+const avatarScale = new Vector3(1.35, 1.35, 1.35)
 
 function updateAvatarLoadState(state: AvatarLoadState): void {
   avatarLoadState.value = state
@@ -79,7 +72,10 @@ function updateFacialMorphState(state: FacialMorphState): void {
 </script>
 
 <template>
-  <section class="brain-scene" aria-label="Live cognitive and EEG 3D scene">
+  <section
+    class="brain-scene"
+    aria-label="Mock cognitive and Muse 2 EEG visualization"
+  >
     <TresCanvas clear-color="#08111f" :antialias="true">
       <TresPerspectiveCamera
         :position="cameraPosition"
@@ -98,11 +94,9 @@ function updateFacialMorphState(state: FacialMorphState): void {
         color="#756cff"
       />
 
-      <CognitiveStateObject :state="cognitiveState" />
       <TresGroup :position="avatarPosition" :scale="avatarScale">
         <BrainAvatar
-          :emotion="emotionState"
-          :emotion-confidence="emotionConfidence"
+          :cognitive-visual-state="cognitiveVisualState"
           @load-state="updateAvatarLoadState"
           @morph-state="updateFacialMorphState"
         />
@@ -111,23 +105,23 @@ function updateFacialMorphState(state: FacialMorphState): void {
     </TresCanvas>
 
     <div class="brain-scene__eeg" aria-live="polite">
-      <span>EEG activity</span>
-      <strong>{{ averageEEGActivity }}%</strong>
-      <small>{{ eegChannels.length }} electrodes</small>
+      <span>Muse 2 mock</span>
+      <strong>{{ averageMockEEGValue }}</strong>
+      <small>{{ eegChannels.length }} sensors · normalized</small>
     </div>
-    <div class="brain-scene__features" aria-live="polite">
-      <span>Gaze</span>
-      <span>Head</span>
-      <span>Particles</span>
-      <span>Halo</span>
+    <div
+      v-if="showDevelopmentStatus"
+      class="brain-scene__diagnostics"
+      aria-live="polite"
+    >
       <span :class="`brain-scene__avatar--${avatarLoadState.status}`">
-        Avatar {{ avatarLoadState.status }}
+        Avatar: {{ avatarLoadState.status }}
       </span>
       <span
         :class="`brain-scene__face--${facialMorphState.mode}`"
         :title="`${facialMorphState.targetCount} facial morph targets`"
       >
-        Face {{ emotionState }} · {{ facialMorphState.mode }}
+        Face: {{ cognitiveVisualState }} · {{ facialMorphState.mode }}
       </span>
     </div>
     <div class="brain-scene__status" aria-hidden="true">
@@ -135,8 +129,8 @@ function updateFacialMorphState(state: FacialMorphState): void {
       WebGL scene active
     </div>
     <div class="brain-scene__state" aria-live="polite">
-      <span>{{ cognitiveStateLabel }}</span>
-      <strong>{{ motionPreset.label }}</strong>
+      <span>Cognitive face</span>
+      <strong>{{ cognitiveVisualStateLabel }}</strong>
     </div>
   </section>
 </template>
@@ -145,7 +139,7 @@ function updateFacialMorphState(state: FacialMorphState): void {
 .brain-scene {
   position: relative;
   width: 100%;
-  min-height: 18rem;
+  min-height: 23rem;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 24px;
@@ -202,42 +196,42 @@ function updateFacialMorphState(state: FacialMorphState): void {
   text-transform: uppercase;
 }
 
-.brain-scene__features {
+.brain-scene__diagnostics {
   position: absolute;
   z-index: 1;
-  top: 1rem;
-  right: 1rem;
+  bottom: 0.85rem;
+  left: 50%;
   display: flex;
   flex-wrap: wrap;
-  justify-content: end;
-  gap: 0.3rem;
-  max-width: 10rem;
+  justify-content: center;
+  gap: 0.25rem;
+  max-width: 14rem;
+  opacity: 0.55;
+  transform: translateX(-50%);
 }
 
-.brain-scene__features span {
-  padding: 0.28rem 0.42rem;
-  border: 1px solid rgba(117, 108, 255, 0.18);
+.brain-scene__diagnostics span {
+  padding: 0.2rem 0.34rem;
+  border: 1px solid rgba(117, 108, 255, 0.12);
   border-radius: 999px;
-  color: #7c8ca1;
-  background: rgba(117, 108, 255, 0.07);
-  font-size: 0.5rem;
-  letter-spacing: 0.07em;
+  color: #64748b;
+  background: rgba(8, 17, 31, 0.52);
+  font-size: 0.46rem;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.brain-scene__features .brain-scene__avatar--loaded,
-.brain-scene__features .brain-scene__face--native,
-.brain-scene__features .brain-scene__face--procedural {
+.brain-scene__diagnostics .brain-scene__avatar--loaded,
+.brain-scene__diagnostics .brain-scene__face--native,
+.brain-scene__diagnostics .brain-scene__face--procedural {
   color: #8debd5;
-  border-color: rgba(81, 230, 196, 0.22);
-  background: rgba(81, 230, 196, 0.08);
+  border-color: rgba(81, 230, 196, 0.14);
 }
 
-.brain-scene__features .brain-scene__avatar--error,
-.brain-scene__features .brain-scene__face--unavailable {
+.brain-scene__diagnostics .brain-scene__avatar--error,
+.brain-scene__diagnostics .brain-scene__face--unavailable {
   color: #fb8ca0;
-  border-color: rgba(251, 113, 133, 0.22);
-  background: rgba(251, 113, 133, 0.08);
+  border-color: rgba(251, 113, 133, 0.14);
 }
 
 .brain-scene__eeg strong {
@@ -286,5 +280,15 @@ function updateFacialMorphState(state: FacialMorphState): void {
   margin-right: 0.45rem;
   color: #334155;
   content: '→';
+}
+
+@media (max-width: 560px) {
+  .brain-scene {
+    min-height: 20rem;
+  }
+
+  .brain-scene__diagnostics {
+    display: none;
+  }
 }
 </style>

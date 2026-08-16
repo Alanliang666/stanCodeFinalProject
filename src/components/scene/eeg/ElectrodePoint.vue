@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AdditiveBlending, Vector3 } from 'three'
-import type { EEGChannelName } from '@/types/brain'
+import type { MuseEEGChannel } from '@/types/eeg'
 import { mapEEGValueToVisual } from '@/visualization/eegElectrodes'
 
 const props = defineProps<{
-  name: EEGChannelName
+  name: MuseEEGChannel
   position: Vector3
   value: number
 }>()
