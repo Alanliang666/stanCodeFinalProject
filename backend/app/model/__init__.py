@@ -1,0 +1,1 @@
+"""Future cognitive model contracts."""

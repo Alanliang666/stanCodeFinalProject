@@ -6,15 +6,16 @@ const COGNITIVE_FACE_MORPH_TARGETS = [
   'browDown_R',
   'browOuterUp_L',
   'browOuterUp_R',
-  'eyeLookOut_L',
-  'eyeLookIn_R',
+  'eyeWide_L',
+  'eyeWide_R',
   'eyeSquint_L',
   'eyeSquint_R',
   'noseSneer_L',
   'noseSneer_R',
-  'mouthLeft',
   'mouthPress_L',
   'mouthPress_R',
+  'mouthFrown_L',
+  'mouthFrown_R',
 ] as const
 
 export type CognitiveFaceMorphTarget =
@@ -25,32 +26,24 @@ export type CognitiveFacePreset = Readonly<
 >
 
 export const COGNITIVE_FACE_PRESETS = {
-  neutral: {},
+  neutral: {
+    eyeWide_L: 0.025,
+    eyeWide_R: 0.025,
+    browOuterUp_L: 0.015,
+    browOuterUp_R: 0.015,
+  },
   focused: {
-    browDown_L: 0.08,
-    browDown_R: 0.08,
-    eyeSquint_L: 0.055,
-    eyeSquint_R: 0.055,
-    mouthPress_L: 0.025,
-    mouthPress_R: 0.025,
-  },
-  distracted: {
-    browOuterUp_L: 0.055,
-    browOuterUp_R: 0.055,
-    eyeLookOut_L: 0.1,
-    eyeLookIn_R: 0.1,
-    mouthLeft: 0.035,
-  },
-  high_load: {
-    browInnerUp: 0.09,
-    browDown_L: 0.055,
-    browDown_R: 0.055,
-    eyeSquint_L: 0.09,
-    eyeSquint_R: 0.09,
-    noseSneer_L: 0.025,
-    noseSneer_R: 0.025,
-    mouthPress_L: 0.07,
-    mouthPress_R: 0.07,
+    browDown_L: 0.42,
+    browDown_R: 0.42,
+    browInnerUp: 0.10,
+    eyeSquint_L: 0.32,
+    eyeSquint_R: 0.32,
+    noseSneer_L: 0.10,
+    noseSneer_R: 0.10,
+    mouthPress_L: 0.30,
+    mouthPress_R: 0.30,
+    mouthFrown_L: 0.08,
+    mouthFrown_R: 0.08,
   },
 } as const satisfies Record<CognitiveVisualState, CognitiveFacePreset>
 

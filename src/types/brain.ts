@@ -2,11 +2,7 @@ import type { MockEEGVisualization } from '@/types/eeg'
 
 export const COGNITIVE_STATES = [
   'neutral',
-  'thinking',
-  'focused',
-  'mindWandering',
-  'uncertain',
-  'relaxed',
+  'concentrating',
 ] as const
 
 export type CognitiveState = (typeof COGNITIVE_STATES)[number]
@@ -14,18 +10,23 @@ export type CognitiveState = (typeof COGNITIVE_STATES)[number]
 export interface CognitivePrediction {
   state: CognitiveState
   confidence: number
+  probabilities: Record<CognitiveState, number>
 }
 
 export interface BrainPrediction {
   timestamp: number
 
-  eeg: MockEEGVisualization
+  eeg?: MockEEGVisualization
 
   cognition: CognitivePrediction
 }
 
-export type BrainConnectionStatus =
-  | 'disconnected'
+export type BrainDataSource = 'mock' | 'websocket'
+
+export type RealtimeConnectionStatus =
+  | 'idle'
   | 'connecting'
   | 'connected'
+  | 'reconnecting'
+  | 'disconnected'
   | 'error'

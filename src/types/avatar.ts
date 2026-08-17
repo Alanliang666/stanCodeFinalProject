@@ -17,5 +17,3 @@ export interface FacialMorphState {
 export type CognitiveVisualState =
   | 'neutral'
   | 'focused'
-  | 'distracted'
-  | 'high_load'

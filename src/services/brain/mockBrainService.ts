@@ -12,14 +12,34 @@ import {
 export type BrainPredictionListener = (prediction: BrainPrediction) => void
 
 const DEFAULT_UPDATE_INTERVAL = 1_000
-const STATE_CHANGE_PROBABILITY = 0.2
-
-function randomItem<T>(items: readonly T[]): T {
-  return items[Math.floor(Math.random() * items.length)] as T
-}
+export const MOCK_COGNITIVE_STATE_DURATION_MS = 3_000
 
 function randomWalk(value: number, volatility: number): number {
   return clamp(value + (Math.random() - 0.5) * volatility)
+}
+
+function createProbabilities(
+  state: CognitiveState,
+  confidence: number,
+): Record<CognitiveState, number> {
+  const remainingProbability = 1 - confidence
+  return Object.fromEntries(
+    COGNITIVE_STATES.map((candidate) => [
+      candidate,
+      candidate === state ? confidence : remainingProbability,
+    ]),
+  ) as Record<CognitiveState, number>
+}
+
+export function getMockCognitiveState(elapsedMs: number): CognitiveState {
+  const phase = Math.floor(
+    Math.max(0, elapsedMs) / MOCK_COGNITIVE_STATE_DURATION_MS,
+  ) % 2
+  return phase === 0 ? 'neutral' : 'concentrating'
+}
+
+function getMockConfidence(state: CognitiveState): number {
+  return state === 'neutral' ? 0.82 : 0.90
 }
 
 function createInitialPrediction(): BrainPrediction {
@@ -33,22 +53,18 @@ function createInitialPrediction(): BrainPrediction {
       })),
     },
     cognition: {
-      state: 'focused',
-      confidence: 0.78,
+      state: 'neutral',
+      confidence: 0.82,
+      probabilities: createProbabilities('neutral', 0.82),
     },
   }
-}
-
-function nextState<T>(current: T, candidates: readonly T[]): T {
-  return Math.random() < STATE_CHANGE_PROBABILITY
-    ? randomItem(candidates)
-    : current
 }
 
 export class MockBrainService {
   private timer: ReturnType<typeof setInterval> | null = null
   private listeners = new Set<BrainPredictionListener>()
   private currentPrediction = createInitialPrediction()
+  private startedAt = 0
 
   subscribe(listener: BrainPredictionListener): () => void {
     this.listeners.add(listener)
@@ -58,6 +74,8 @@ export class MockBrainService {
   start(updateInterval = DEFAULT_UPDATE_INTERVAL): void {
     if (this.timer !== null) return
 
+    this.startedAt = Date.now()
+    this.currentPrediction = createInitialPrediction()
     this.emit(this.currentPrediction)
     this.timer = setInterval(() => {
       this.currentPrediction = this.generatePrediction(this.currentPrediction)
@@ -76,10 +94,12 @@ export class MockBrainService {
   }
 
   private generatePrediction(previous: BrainPrediction): BrainPrediction {
+    const state = getMockCognitiveState(Date.now() - this.startedAt)
+    const confidence = getMockConfidence(state)
     return {
       timestamp: Date.now(),
       eeg: {
-        channels: previous.eeg.channels.map(
+        channels: (previous.eeg?.channels ?? []).map(
           (channel): MockEEGVisualizationChannel => ({
             ...channel,
             normalizedValue: randomWalk(
@@ -91,11 +111,9 @@ export class MockBrainService {
         kind: 'mock-normalized',
       },
       cognition: {
-        state: nextState<CognitiveState>(
-          previous.cognition.state,
-          COGNITIVE_STATES,
-        ),
-        confidence: randomWalk(previous.cognition.confidence, 0.15),
+        state,
+        confidence,
+        probabilities: createProbabilities(state, confidence),
       },
     }
   }

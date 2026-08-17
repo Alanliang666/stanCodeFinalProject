@@ -4,16 +4,11 @@ import { storeToRefs } from 'pinia'
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
 import BrainAvatar from '@/components/scene/BrainAvatar.vue'
-import EEGHeadMap from '@/components/scene/eeg/EEGHeadMap.vue'
 import { useBrainStore } from '@/stores/brainStore'
 import type {
   AvatarLoadState,
   FacialMorphState,
 } from '@/types/avatar'
-import {
-  MUSE_EEG_CHANNELS,
-  type MockEEGVisualizationChannel,
-} from '@/types/eeg'
 import { mapCognitivePredictionToVisualState } from '@/visualization/cognitiveVisualStateAdapter'
 
 const brainStore = useBrainStore()
@@ -29,12 +24,6 @@ const facialMorphState = ref<FacialMorphState>({
   targetCount: 0,
 })
 
-const emptyEEGChannels: MockEEGVisualizationChannel[] =
-  MUSE_EEG_CHANNELS.map((name) => ({
-    name,
-    normalizedValue: 0,
-  }))
-
 const cognitivePrediction = computed(
   () => prediction.value?.cognition ?? null,
 )
@@ -44,23 +33,12 @@ const cognitiveVisualState = computed(() =>
 const cognitiveVisualStateLabel = computed(() =>
   cognitiveVisualState.value.replace('_', ' '),
 )
-const eegChannels = computed(
-  () => prediction.value?.eeg.channels ?? emptyEEGChannels,
-)
-const averageMockEEGValue = computed(() => {
-  const total = eegChannels.value.reduce(
-    (sum, channel) => sum + channel.normalizedValue,
-    0,
-  )
-  return (total / eegChannels.value.length).toFixed(2)
-})
-
 const sceneOrigin = new Vector3(0, 0, 0)
-const cameraPosition = new Vector3(0, 1.1, 7)
+const cameraPosition = new Vector3(0, 0.95, 6.1)
 const keyLightPosition = new Vector3(3, 4, 5)
 const fillLightPosition = new Vector3(-3, -1, 2)
-const avatarPosition = new Vector3(-0.45, -0.18, 0.18)
-const avatarScale = new Vector3(1.35, 1.35, 1.35)
+const avatarPosition = new Vector3(0, -0.12, 0.12)
+const avatarScale = new Vector3(1.45, 1.45, 1.45)
 
 function updateAvatarLoadState(state: AvatarLoadState): void {
   avatarLoadState.value = state
@@ -74,7 +52,7 @@ function updateFacialMorphState(state: FacialMorphState): void {
 <template>
   <section
     class="brain-scene"
-    aria-label="Mock cognitive and Muse 2 EEG visualization"
+    aria-label="FaceCap cognitive avatar visualization"
   >
     <TresCanvas clear-color="#08111f" :antialias="true">
       <TresPerspectiveCamera
@@ -101,14 +79,7 @@ function updateFacialMorphState(state: FacialMorphState): void {
           @morph-state="updateFacialMorphState"
         />
       </TresGroup>
-      <EEGHeadMap :channels="eegChannels" />
     </TresCanvas>
-
-    <div class="brain-scene__eeg" aria-live="polite">
-      <span>Muse 2 mock</span>
-      <strong>{{ averageMockEEGValue }}</strong>
-      <small>{{ eegChannels.length }} sensors · normalized</small>
-    </div>
     <div
       v-if="showDevelopmentStatus"
       class="brain-scene__diagnostics"
@@ -128,7 +99,11 @@ function updateFacialMorphState(state: FacialMorphState): void {
       <span />
       WebGL scene active
     </div>
-    <div class="brain-scene__state" aria-live="polite">
+    <div
+      v-if="showDevelopmentStatus"
+      class="brain-scene__state"
+      aria-live="polite"
+    >
       <span>Cognitive face</span>
       <strong>{{ cognitiveVisualStateLabel }}</strong>
     </div>
@@ -172,30 +147,6 @@ function updateFacialMorphState(state: FacialMorphState): void {
   text-transform: uppercase;
 }
 
-.brain-scene__eeg {
-  position: absolute;
-  z-index: 1;
-  top: 1rem;
-  left: 1rem;
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: baseline;
-  gap: 0.2rem 0.5rem;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.11);
-  border-radius: 10px;
-  background: rgba(8, 17, 31, 0.58);
-  backdrop-filter: blur(8px);
-}
-
-.brain-scene__eeg span,
-.brain-scene__eeg small {
-  color: #64748b;
-  font-size: 0.58rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
 .brain-scene__diagnostics {
   position: absolute;
   z-index: 1;
@@ -232,17 +183,6 @@ function updateFacialMorphState(state: FacialMorphState): void {
 .brain-scene__diagnostics .brain-scene__face--unavailable {
   color: #fb8ca0;
   border-color: rgba(251, 113, 133, 0.14);
-}
-
-.brain-scene__eeg strong {
-  color: #b8fff0;
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.brain-scene__eeg small {
-  grid-column: 1 / -1;
-  color: #334155;
 }
 
 .brain-scene__status {
