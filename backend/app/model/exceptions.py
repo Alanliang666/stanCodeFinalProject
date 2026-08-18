@@ -15,3 +15,7 @@ class ModelExecutionError(ModelInferenceError):
 
 class InvalidModelOutput(ModelInferenceError):
     """Raised when a raw provider result violates the output contract."""
+
+
+class ModelProviderLoadError(RuntimeError):
+    """Raised at startup when the configured model provider cannot load."""

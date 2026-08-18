@@ -5,6 +5,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from backend.app.server import ServerConfig, create_app
+from backend.app.model.provider import ModelTeamFunctionProvider
 
 
 class LocalAgentServerTests(unittest.TestCase):
@@ -59,6 +60,48 @@ class LocalAgentServerTests(unittest.TestCase):
         )
         self.assertIn("Source: MOCK / SYNTHETIC STREAM", log_lines)
         self.assertIn("Model provider: STUB MODEL", log_lines)
+
+    def test_synthetic_source_is_independent_from_model_team_provider(self) -> None:
+        def fake_predict_mental_state(raw_window):
+            self.assertEqual(raw_window.shape, (256, 4))
+            self.assertTrue(raw_window.flags.writeable)
+            return {
+                "state": "concentrating",
+                "confidence": 0.9,
+                "probabilities": {
+                    "neutral": 0.1,
+                    "concentrating": 0.9,
+                },
+            }
+
+        app = create_app(
+            config=ServerConfig(source_mode="synthetic"),
+            model_provider=ModelTeamFunctionProvider(
+                fake_predict_mental_state
+            ),
+            start_agent=True,
+            write_line=lambda line: None,
+        )
+
+        with TestClient(app) as client:
+            self.assertEqual(
+                client.get("/health").json()["model_provider"],
+                "MODEL TEAM - predict_mental_state",
+            )
+            with client.websocket_connect("/ws") as websocket:
+                prediction = None
+                for _ in range(20):
+                    message = websocket.receive_json()
+                    if message["type"] == "cognitive_prediction":
+                        prediction = message
+                        break
+
+        self.assertIsNotNone(prediction)
+        self.assertEqual(prediction["data"]["state"], "concentrating")
+        self.assertEqual(
+            prediction["data"]["probabilities"],
+            {"neutral": 0.1, "concentrating": 0.9},
+        )
 
 
 if __name__ == "__main__":

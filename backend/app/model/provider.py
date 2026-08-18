@@ -1,13 +1,29 @@
 """Model provider abstraction and the single Model Team integration point."""
 
+from importlib import import_module
+import os
 import time
-from typing import Any, Callable, Mapping, Protocol
+from types import ModuleType
+from typing import Any, Callable, Mapping, Optional, Protocol
 
 import numpy as np
+
+from backend.app.model.exceptions import ModelProviderLoadError
 
 
 RawModelResult = Mapping[str, Any]
 ModelPredictFunction = Callable[[np.ndarray], RawModelResult]
+ModelFunctionLoader = Callable[[], ModelPredictFunction]
+
+MODEL_PROVIDER_ENVIRONMENT_VARIABLE = "MODEL_PROVIDER"
+STUB_PROVIDER_MODE = "stub"
+MODEL_TEAM_PROVIDER_MODE = "model_team"
+MODEL_TEAM_MODULE_PATH = "backend.app.model.inference"
+MODEL_TEAM_RELATIVE_MODULE = ".inference"
+MODEL_TEAM_CALLABLE_NAME = "predict_mental_state"
+MODEL_TEAM_EXPECTED_CALLABLE = (
+    MODEL_TEAM_MODULE_PATH + "." + MODEL_TEAM_CALLABLE_NAME
+)
 
 
 class ModelProvider(Protocol):
@@ -52,12 +68,12 @@ class StubModelProvider:
 
 
 class ModelTeamFunctionProvider:
-    """Adapts the Model Team's future ``predict(raw_window)`` function."""
+    """Adapts the Model Team's ``predict_mental_state(raw_window)`` function."""
 
     def __init__(
         self,
         predict_function: ModelPredictFunction,
-        display_name: str = "PRODUCTION MODEL",
+        display_name: str = "MODEL TEAM - predict_mental_state",
     ) -> None:
         self._predict_function = predict_function
         self.display_name = display_name
@@ -66,7 +82,62 @@ class ModelTeamFunctionProvider:
         return self._predict_function(raw_window)
 
 
-def create_runtime_model_provider() -> ModelProvider:
-    """Composition root to replace when the Model Team package arrives."""
+def _model_team_load_error(reason: str) -> ModelProviderLoadError:
+    return ModelProviderLoadError(
+        "REAL MODEL LOAD FAILED\n"
+        "{0}\n"
+        "Expected callable:\n"
+        "{1}".format(reason, MODEL_TEAM_EXPECTED_CALLABLE)
+    )
 
-    return StubModelProvider()
+
+def _import_model_team_module() -> ModuleType:
+    try:
+        return import_module(MODEL_TEAM_RELATIVE_MODULE, package=__package__)
+    except Exception as error:
+        raise _model_team_load_error(
+            "Model Team inference package is not installed."
+        ) from error
+
+
+def load_model_team_predict_function() -> ModelPredictFunction:
+    """Load the Model Team callable once during provider construction."""
+
+    module = _import_model_team_module()
+    predict_function = getattr(module, MODEL_TEAM_CALLABLE_NAME, None)
+    if not callable(predict_function):
+        raise _model_team_load_error(
+            "Model Team inference package does not expose the required callable."
+        )
+    return predict_function
+
+
+def create_runtime_model_provider(
+    provider_mode: Optional[str] = None,
+    model_function_loader: ModelFunctionLoader = (
+        load_model_team_predict_function
+    ),
+) -> ModelProvider:
+    """Create the configured provider without silently changing modes."""
+
+    configured_mode = (
+        provider_mode
+        if provider_mode is not None
+        else os.getenv(MODEL_PROVIDER_ENVIRONMENT_VARIABLE, STUB_PROVIDER_MODE)
+    )
+    normalized_mode = configured_mode.strip().lower()
+
+    if normalized_mode == STUB_PROVIDER_MODE:
+        return StubModelProvider()
+    if normalized_mode == MODEL_TEAM_PROVIDER_MODE:
+        predict_function = model_function_loader()
+        if not callable(predict_function):
+            raise _model_team_load_error(
+                "Configured Model Team loader did not return a callable."
+            )
+        return ModelTeamFunctionProvider(predict_function)
+
+    raise ModelProviderLoadError(
+        "Unsupported MODEL_PROVIDER value: {0!r}. Expected 'stub' or "
+        "'model_team'.".format(configured_mode)
+    )
