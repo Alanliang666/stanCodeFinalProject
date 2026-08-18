@@ -16,6 +16,7 @@ from backend.app.local_agent import (
     SyntheticEEGSource,
 )
 from backend.app.model.inference_service import ModelInferenceService
+from backend.app.model.exceptions import ModelProviderLoadError
 from backend.app.model.provider import (
     ModelProvider,
     create_runtime_model_provider,
@@ -173,7 +174,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         mac_address=args.mac_address,
         serial_number=args.serial_number,
     )
-    app = create_app(config=config)
+    try:
+        app = create_app(config=config)
+    except ModelProviderLoadError as error:
+        raise SystemExit(str(error)) from error
     uvicorn.run(app, host=config.host, port=config.port)
 
 

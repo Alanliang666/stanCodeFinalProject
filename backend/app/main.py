@@ -20,6 +20,7 @@ from backend.app.model.exceptions import (
     InvalidModelInput,
     InvalidModelOutput,
     ModelExecutionError,
+    ModelProviderLoadError,
 )
 from backend.app.model.inference_service import ModelInferenceService
 from backend.app.model.provider import create_runtime_model_provider
@@ -195,11 +196,14 @@ def run(
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = build_argument_parser().parse_args(argv)
-    run(
-        mac_address=args.mac_address,
-        serial_number=args.serial_number,
-        poll_interval=args.poll_interval,
-    )
+    try:
+        run(
+            mac_address=args.mac_address,
+            serial_number=args.serial_number,
+            poll_interval=args.poll_interval,
+        )
+    except ModelProviderLoadError as error:
+        raise SystemExit(str(error)) from error
 
 
 if __name__ == "__main__":

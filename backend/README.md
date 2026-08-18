@@ -76,15 +76,73 @@ Probabilities must sum to approximately 1. `state` must be a highest-probability
 class, and `confidence` must equal `probabilities[state]` within floating-point
 tolerance.
 
-The Model Team's `predict(raw_window)` function owns all filtering,
+The Model Team's `predict_mental_state(raw_window)` function owns all filtering,
 preprocessing, feature extraction, fitted scaler usage, model execution, and
 `predict_proba`. The Backend does not reproduce any of those operations.
 
-`backend/app/model/provider.py` is the single production integration point.
-When the package arrives, its function should be passed to
-`ModelTeamFunctionProvider`, replacing the stub returned by
-`create_runtime_model_provider()`. Muse acquisition, buffering, validation, and
-the inference service remain unchanged.
+The provider receives a writable NumPy copy. Mutating it cannot modify the
+immutable `EEGChunk` retained by the Backend.
+
+### Runtime model provider
+
+`MODEL_PROVIDER` selects the model independently from the EEG source:
+
+```powershell
+$env:MODEL_PROVIDER = "stub"
+python -m backend.app.server --synthetic
+```
+
+```powershell
+$env:MODEL_PROVIDER = "model_team"
+python -m backend.app.server
+```
+
+The supported values are exactly `stub` and `model_team`; the default is
+`stub`. Synthetic EEG does not imply a stub model, so this wiring test is also
+supported:
+
+```powershell
+$env:MODEL_PROVIDER = "model_team"
+python -m backend.app.server --synthetic
+```
+
+`model_team` lazily imports the following package-relative callable once during
+runtime startup:
+
+```python
+from backend.app.model.inference import predict_mental_state
+```
+
+The Model Team must install its implementation and artifacts under
+`backend/app/model/`, with this entry point:
+
+```python
+def predict_mental_state(raw_window: numpy.ndarray) -> Mapping[str, object]:
+    ...
+```
+
+The module should load its model, scaler, and other immutable artifacts once at
+module import or provider initialization—not once per EEG window. It owns all
+preprocessing and must return the binary output contract above.
+
+The repository currently does not contain `backend/app/model/inference.py` or
+trained artifacts. Selecting `MODEL_PROVIDER=model_team` before installing them
+fails at startup with:
+
+```text
+REAL MODEL LOAD FAILED
+Model Team inference package is not installed.
+Expected callable:
+backend.app.model.inference.predict_mental_state
+```
+
+There is deliberately no fallback to `STUB MODEL`. Single-call exceptions after
+a real provider has loaded are converted to `ModelExecutionError`; acquisition
+continues and the bad window is not published. Raw model output still passes
+through `CognitivePrediction` validation before reaching the realtime layer.
+
+The successful real provider is reported as
+`MODEL TEAM - predict_mental_state` in startup logs and `/health`.
 
 ## Unit tests
 
