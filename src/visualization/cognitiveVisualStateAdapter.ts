@@ -6,11 +6,7 @@ import type {
 
 const COGNITIVE_VISUAL_STATE_BY_PREDICTION = {
   neutral: 'neutral',
-  thinking: 'focused',
-  focused: 'focused',
-  mindWandering: 'distracted',
-  uncertain: 'neutral',
-  relaxed: 'neutral',
+  concentrating: 'focused',
 } as const satisfies Record<CognitiveState, CognitiveVisualState>
 
 export function mapCognitivePredictionToVisualState(

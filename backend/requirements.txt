@@ -1,0 +1,6 @@
+brainflow==5.22.2
+fastapi>=0.115,<1
+httpx>=0.27,<1
+numpy>=1.20,<3
+uvicorn>=0.30,<1
+websockets>=13,<17

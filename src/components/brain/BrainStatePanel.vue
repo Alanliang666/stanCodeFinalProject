@@ -1,24 +1,36 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useBrainStore } from '@/stores/brainStore'
-import type { BrainConnectionStatus } from '@/types/brain'
-import { MUSE_EEG_CHANNELS } from '@/types/eeg'
+import type {
+  CognitiveState,
+  RealtimeConnectionStatus,
+} from '@/types/brain'
+import { LIVE_EEG_CHANNEL_ORDER } from '@/types/eeg'
 
 const brainStore = useBrainStore()
-const { prediction, connectionStatus, lastUpdated } = storeToRefs(brainStore)
+const {
+  prediction,
+  connectionStatus,
+  deviceStatus,
+  dataSource,
+  dataSourceLabel,
+  errorMessage,
+  lastUpdated,
+} = storeToRefs(brainStore)
 
-const statusLabels: Record<BrainConnectionStatus, string> = {
-  disconnected: 'Mock stream paused',
-  connecting: 'Starting mock stream',
-  connected: 'Mock stream active',
-  error: 'Mock stream error',
+const statusLabels: Record<RealtimeConnectionStatus, string> = {
+  idle: 'Idle',
+  disconnected: 'Disconnected',
+  connecting: 'Connecting',
+  connected: 'Connected',
+  reconnecting: 'Reconnecting',
+  error: 'Connection error',
 }
 
 const lastUpdatedLabel = computed(() => {
-  if (lastUpdated.value === null) return 'Waiting for mock data'
+  if (lastUpdated.value === null) return 'Prediction unavailable'
   return new Intl.DateTimeFormat('zh-TW', {
     hour: '2-digit',
     minute: '2-digit',
@@ -27,35 +39,18 @@ const lastUpdatedLabel = computed(() => {
   }).format(lastUpdated.value)
 })
 
-function formatState(state: string): string {
-  return state.replace(/([a-z])([A-Z])/g, '$1 $2')
-}
-
 function toPercentage(value: number): number {
   return Math.round(value * 100)
 }
 
-function toggleStream(): void {
-  if (connectionStatus.value === 'connected') {
-    brainStore.stopMockStream()
-    return
-  }
-  brainStore.startMockStream()
+const cognitiveStateLabels: Record<CognitiveState, string> = {
+  neutral: 'Neutral',
+  concentrating: 'Concentration',
 }
 </script>
 
 <template>
-  <BaseCard eyebrow="Frontend simulation" title="EEG Insights">
-    <template #action>
-      <BaseButton
-        :variant="connectionStatus === 'connected' ? 'ghost' : 'primary'"
-        :disabled="connectionStatus === 'connecting'"
-        @click="toggleStream"
-      >
-        {{ connectionStatus === 'connected' ? 'Pause mock' : 'Start mock' }}
-      </BaseButton>
-    </template>
-
+  <BaseCard eyebrow="Cognitive prediction" title="EEG Insights">
     <div class="panel-meta">
       <div class="connection">
         <span
@@ -63,94 +58,63 @@ function toggleStream(): void {
           :class="`connection__dot--${connectionStatus}`"
           aria-hidden="true"
         />
-        <span>{{ statusLabels[connectionStatus] }}</span>
+        <span>Realtime: {{ statusLabels[connectionStatus] }}</span>
       </div>
-      <span class="panel-meta__device">Muse: Waiting for device</span>
+      <span class="panel-meta__device">
+        Muse: {{ deviceStatus.connected ? 'Connected' : 'Disconnected' }}
+      </span>
       <time v-if="lastUpdated" :datetime="new Date(lastUpdated).toISOString()">
         Updated {{ lastUpdatedLabel }}
       </time>
       <span v-else>{{ lastUpdatedLabel }}</span>
     </div>
 
-    <div v-if="prediction" class="panel-content">
+    <div class="panel-content">
       <div class="insight-grid">
         <article class="insight-card insight-card--state">
           <span>Current Cognitive State</span>
-          <strong>{{ formatState(prediction.cognition.state) }}</strong>
+          <strong>{{ prediction ? cognitiveStateLabels[prediction.cognition.state] : 'Unavailable' }}</strong>
         </article>
 
         <article class="insight-card">
           <span>Model Confidence</span>
-          <strong>{{ toPercentage(prediction.cognition.confidence) }}%</strong>
+          <strong>{{ prediction ? `${toPercentage(prediction.cognition.confidence)}%` : '—' }}</strong>
         </article>
 
         <article class="insight-card">
           <span>Data Source</span>
-          <strong>Mock Data</strong>
-          <small>No physical Muse connected</small>
+          <strong>{{ dataSourceLabel }}</strong>
+          <small>{{ dataSource === 'mock' ? 'Frontend development generator' : 'Backend realtime stream' }}</small>
         </article>
       </div>
 
       <section
         class="muse-section"
-        aria-label="Muse 2 mock device information"
+        aria-label="EEG device information"
       >
         <div class="muse-section__heading">
           <div>
-            <span>Muse 2 EEG</span>
-            <strong>Waiting for device</strong>
+            <span>{{ deviceStatus.device }}</span>
+            <strong>{{ deviceStatus.connected ? 'Connected' : 'Disconnected' }}</strong>
           </div>
-          <span class="muse-section__badge">Mock</span>
+          <span class="muse-section__badge">{{ dataSource === 'mock' ? 'Mock' : 'Realtime' }}</span>
         </div>
 
         <div class="muse-section__details">
           <div>
             <span>Channels</span>
-            <strong>{{ MUSE_EEG_CHANNELS.join(' · ') }}</strong>
+            <strong>{{ LIVE_EEG_CHANNEL_ORDER.join(' · ') }}</strong>
           </div>
           <div>
             <span>Sampling Rate</span>
-            <strong>256 Hz</strong>
+            <strong>{{ deviceStatus.sampling_rate_hz }} Hz</strong>
           </div>
         </div>
       </section>
 
-      <div class="eeg-section">
-        <div class="section-heading">
-          <div>
-            <span class="section-heading__eyebrow">
-              {{ prediction.eeg.channels.length }} mock channels
-            </span>
-            <h3>EEG activity</h3>
-          </div>
-          <span>Mock normalized value</span>
-        </div>
-
-        <div class="channel-grid">
-          <div
-            v-for="channel in prediction.eeg.channels"
-            :key="channel.name"
-            class="channel"
-          >
-            <div class="channel__header">
-              <span>{{ channel.name }}</span>
-              <strong>{{ channel.normalizedValue.toFixed(2) }}</strong>
-            </div>
-            <div class="channel__track" aria-hidden="true">
-              <span
-                :style="{
-                  width: `${toPercentage(channel.normalizedValue)}%`,
-                }"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-else class="empty-state" aria-live="polite">
-      <span class="empty-state__pulse" />
-      <p>Initializing mock prediction...</p>
+      <p v-if="!prediction" class="prediction-status" aria-live="polite">
+        {{ errorMessage ?? 'Prediction unavailable / waiting' }}
+      </p>
     </div>
   </BaseCard>
 </template>
@@ -323,96 +287,18 @@ function toggleStream(): void {
   font-weight: 600;
 }
 
-.eeg-section {
-  margin-top: 1.5rem;
-  padding-top: 1.4rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
-}
-
-.section-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  margin-bottom: 1.15rem;
+.prediction-status {
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.035);
   color: #64748b;
-  font-size: 0.68rem;
-}
-
-.section-heading__eyebrow {
-  display: block;
-  margin-bottom: 0.25rem;
-  color: #51e6c4;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.section-heading h3 {
-  margin: 0;
-  color: #e2e8f0;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.channel-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.8rem 0.65rem;
-}
-
-.channel__header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.4rem;
-  color: #94a3b8;
-  font-size: 0.63rem;
-}
-
-.channel__header strong {
-  color: #64748b;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.channel__track {
-  height: 0.25rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.1);
-}
-
-.channel__track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #29bd9e, #6e72ee);
-  transition: width 600ms ease;
-}
-
-.empty-state {
-  display: grid;
-  min-height: 23rem;
-  place-content: center;
-  justify-items: center;
-  color: #64748b;
-  font-size: 0.8rem;
-}
-
-.empty-state__pulse {
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 2px solid rgba(81, 230, 196, 0.18);
-  border-top-color: #51e6c4;
-  border-radius: 50%;
-  animation: spin 900ms linear infinite;
+  font-size: 0.7rem;
 }
 
 @keyframes pulse {
   50% { opacity: 0.4; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 660px) {
@@ -428,15 +314,11 @@ function toggleStream(): void {
     grid-template-columns: 1fr;
   }
 
-  .channel-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .channel__track span,
   .connection__dot,
-  .empty-state__pulse {
+  .prediction-status {
     animation: none;
     transition: none;
   }

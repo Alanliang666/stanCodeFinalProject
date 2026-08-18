@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import BrainStatePanel from '@/components/brain/BrainStatePanel.vue'
+import LiveEEGPanel from '@/components/brain/LiveEEGPanel.vue'
 import BrainScene from '@/components/scene/BrainScene.vue'
 import { useBrainStream } from '@/composables/useBrainStream'
 
-useBrainStream()
+const {
+  eegChunk,
+  dataSource,
+  dataSourceLabel,
+  connectionStatus,
+  deviceStatus,
+} = useBrainStream()
 </script>
 
 <template>
@@ -22,7 +29,7 @@ useBrainStream()
       </a>
 
       <div class="environment">
-        <span>Mock data environment</span>
+        <span>{{ dataSourceLabel }}</span>
       </div>
     </header>
 
@@ -31,8 +38,8 @@ useBrainStream()
         <p class="dashboard__eyebrow">Neural intelligence interface</p>
         <h1>See the state<br />behind the signal.</h1>
         <p class="dashboard__description">
-          A frontend simulation of mock EEG activity and cognitive predictions,
-          rendered through the FaceCap visualization avatar.
+          Realtime EEG activity and cognitive predictions rendered through the
+          FaceCap visualization avatar.
         </p>
       </div>
 
@@ -43,9 +50,18 @@ useBrainStream()
       <BrainStatePanel />
     </aside>
 
+    <LiveEEGPanel
+      class="dashboard__eeg"
+      :chunk="eegChunk"
+      :data-source="dataSource"
+      :connection-status="connectionStatus"
+      :device-connected="deviceStatus.connected"
+      :device-name="deviceStatus.device"
+    />
+
     <footer class="dashboard__footer">
-      <span>Muse 2 · 4-channel mock EEG</span>
-      <span>1 Hz mock cognitive prediction stream</span>
+      <span>Muse 2 · 4-channel rolling waveform</span>
+      <span>{{ dataSource === 'mock' ? 'Development mock stream' : 'Realtime WebSocket stream' }}</span>
       <span>Facial morph smoothing</span>
     </footer>
   </main>
@@ -56,7 +72,7 @@ useBrainStream()
   position: relative;
   display: grid;
   grid-template-columns: minmax(22rem, 0.95fr) minmax(30rem, 1.05fr);
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto auto auto;
   gap: 1.5rem 3.5rem;
   min-height: 100vh;
   max-width: 86rem;
@@ -195,6 +211,11 @@ useBrainStream()
   justify-self: end;
 }
 
+.dashboard__eeg {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .dashboard__footer {
   grid-column: 1 / -1;
   display: flex;
@@ -224,6 +245,10 @@ useBrainStream()
 
   .dashboard__panel {
     max-width: none;
+  }
+
+  .dashboard__eeg {
+    grid-column: 1;
   }
 }
 
