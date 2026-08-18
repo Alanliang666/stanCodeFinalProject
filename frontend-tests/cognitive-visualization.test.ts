@@ -31,15 +31,29 @@ test('FaceCap presets contain only neutral and focused', () => {
     'focused',
   ])
   assert.deepEqual(COGNITIVE_FACE_PRESETS.neutral, {
-    eyeWide_L: 0.025,
-    eyeWide_R: 0.025,
-    browOuterUp_L: 0.015,
-    browOuterUp_R: 0.015,
+    eyeLookUp_L: 0.78,
+    eyeLookUp_R: 0.78,
+    eyeWide_L: 0.36,
+    eyeWide_R: 0.36,
+    jawOpen: 0.22,
+    mouthShrugLower: 0.28,
+    mouthRollLower: 0.18,
   })
-  assert.equal(COGNITIVE_FACE_PRESETS.focused.browDown_L, 0.42)
-  assert.equal(COGNITIVE_FACE_PRESETS.focused.eyeSquint_R, 0.32)
-  assert.equal(COGNITIVE_FACE_PRESETS.focused.mouthPress_L, 0.30)
-  assert.equal(COGNITIVE_FACE_PRESETS.focused.mouthFrown_R, 0.08)
+  assert.deepEqual(COGNITIVE_FACE_PRESETS.focused, {
+    browInnerUp: 0.38,
+    browDown_L: 1.0,
+    browDown_R: 1.0,
+    eyeSquint_L: 0.90,
+    eyeSquint_R: 0.90,
+    noseSneer_L: 0.65,
+    noseSneer_R: 0.65,
+    mouthPress_L: 0.78,
+    mouthPress_R: 0.78,
+    mouthFrown_L: 0.42,
+    mouthFrown_R: 0.42,
+    mouthShrugUpper: 0.55,
+    jawForward: 0.48,
+  })
 })
 
 test('blink composes over focused without clearing cognitive weights', () => {
@@ -49,8 +63,8 @@ test('blink composes over focused without clearing cognitive weights', () => {
     blink,
   )
 
-  assert.equal(composed.browDown_L, 0.42)
-  assert.equal(composed.mouthPress_R, 0.30)
+  assert.equal(composed.browDown_L, 1.0)
+  assert.equal(composed.mouthPress_R, 0.78)
   assert.ok((composed.eyeBlink_L ?? 0) > 0.99)
   assert.ok((composed.eyeBlink_R ?? 0) > 0.99)
 })

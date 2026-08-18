@@ -74,6 +74,7 @@ await call('Page.navigate', { url: applicationUrl })
 const observedProductStates = new Set()
 let currentView = null
 let neutralScreenshot = null
+let focusedStateSince = null
 const deadline = Date.now() + 14_000
 
 while (Date.now() < deadline) {
@@ -101,13 +102,21 @@ while (Date.now() < deadline) {
       captureBeyondViewport: true,
     })
   }
+  const isFocusedView = currentView.productState === 'Concentration'
+    && currentView.visualState === 'focused'
+  if (isFocusedView) {
+    focusedStateSince ??= Date.now()
+  } else {
+    focusedStateSince = null
+  }
   if (
     observedProductStates.has('Neutral')
     && observedProductStates.has('Concentration')
     && debugTargets.has('neutral')
     && debugTargets.has('focused')
-    && currentView.productState === 'Concentration'
-    && currentView.visualState === 'focused'
+    && isFocusedView
+    && focusedStateSince !== null
+    && Date.now() - focusedStateSince >= 800
     && currentView.faceStatus.toLowerCase().includes('native')
     && currentView.avatarStatus.toLowerCase().includes('loaded')
   ) {
@@ -131,10 +140,13 @@ assert.ok(neutralScreenshot)
 const neutralWeights = await readTargetWeights(debugTargets.get('neutral'))
 const focusedWeights = await readTargetWeights(debugTargets.get('focused'))
 assert.deepEqual(Object.keys(neutralWeights).sort(), [
-  'browOuterUp_L',
-  'browOuterUp_R',
+  'eyeLookUp_L',
+  'eyeLookUp_R',
   'eyeWide_L',
   'eyeWide_R',
+  'jawOpen',
+  'mouthRollLower',
+  'mouthShrugLower',
 ].sort())
 assert.deepEqual(Object.keys(focusedWeights).sort(), [
   'browDown_L',
@@ -142,10 +154,12 @@ assert.deepEqual(Object.keys(focusedWeights).sort(), [
   'browInnerUp',
   'eyeSquint_L',
   'eyeSquint_R',
+  'jawForward',
   'mouthFrown_L',
   'mouthFrown_R',
   'mouthPress_L',
   'mouthPress_R',
+  'mouthShrugUpper',
   'noseSneer_L',
   'noseSneer_R',
 ].sort())
