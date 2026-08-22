@@ -91,6 +91,7 @@ test('source selection keeps mock and websocket mutually exclusive', () => {
 test('stale prediction threshold is deterministic', () => {
   assert.equal(isPredictionStale(null, 10_000, 5_000), false)
   assert.equal(isPredictionStale(5_000, 10_000, 5_000), false)
+  assert.equal(isPredictionStale(7_500, 10_000, 5_000), false)
   assert.equal(isPredictionStale(4_999, 10_000, 5_000), true)
 })
 

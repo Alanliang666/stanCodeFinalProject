@@ -10,6 +10,12 @@ from typing import Callable, Optional, Sequence
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import uvicorn
 
+from backend.app.config import (
+    EEGInferenceConfig,
+    EEGInferenceConfigError,
+    load_eeg_inference_config,
+)
+from backend.app.eeg.contracts import SAMPLING_RATE_HZ
 from backend.app.local_agent import (
     LocalRealtimeAgent,
     MuseEEGSource,
@@ -20,6 +26,7 @@ from backend.app.model.exceptions import ModelProviderLoadError
 from backend.app.model.provider import (
     ModelProvider,
     create_runtime_model_provider,
+    validate_model_provider_window,
 )
 from backend.app.muse.muse_collector import MuseCollector
 from backend.app.realtime.messages import create_device_status_message
@@ -45,13 +52,23 @@ class ServerConfig:
 
 def create_app(
     config: Optional[ServerConfig] = None,
+    inference_config: Optional[EEGInferenceConfig] = None,
     model_provider: Optional[ModelProvider] = None,
     start_agent: bool = True,
     write_line: Callable[[str], None] = print,
 ) -> FastAPI:
     active_config = config or ServerConfig()
-    provider = model_provider or create_runtime_model_provider()
-    state = LocalAgentState(provider.display_name)
+    active_inference_config = (
+        inference_config or load_eeg_inference_config()
+    )
+    provider = model_provider or create_runtime_model_provider(
+        configured_window_samples=active_inference_config.window_samples
+    )
+    validate_model_provider_window(
+        provider,
+        active_inference_config.window_samples,
+    )
+    state = LocalAgentState(provider.display_name, active_inference_config)
     device_name = (
         "Synthetic Muse 2"
         if active_config.source_mode == "synthetic"
@@ -75,10 +92,14 @@ def create_app(
     agent = LocalRealtimeAgent(
         source=source,
         publisher=publisher,
-        inference_service=ModelInferenceService(provider),
+        inference_service=ModelInferenceService(
+            provider,
+            inference_config=active_inference_config,
+        ),
+        inference_config=active_inference_config,
         state=state,
         poll_interval=(
-            source.chunk_size / 256.0
+            source.chunk_size / SAMPLING_RATE_HZ
             if isinstance(source, SyntheticEEGSource)
             else 0.1
         ),
@@ -95,6 +116,23 @@ def create_app(
             "Health: http://localhost:{0}/health".format(active_config.port)
         )
         write_line("Model provider: {0}".format(provider.display_name))
+        write_line(
+            "EEG sampling rate: {0} Hz".format(
+                active_inference_config.sampling_rate_hz
+            )
+        )
+        write_line(
+            "Inference window: {0} samples ({1:.3f} sec)".format(
+                active_inference_config.window_samples,
+                active_inference_config.window_size_sec,
+            )
+        )
+        write_line(
+            "Inference stride: {0} samples ({1:.3f} sec)".format(
+                active_inference_config.stride_samples,
+                active_inference_config.stride_sec,
+            )
+        )
         if active_config.source_mode == "synthetic":
             write_line("Source: MOCK / SYNTHETIC STREAM")
 
@@ -118,6 +156,7 @@ def create_app(
     app.state.local_agent = agent
     app.state.local_agent_state = state
     app.state.model_provider = provider
+    app.state.eeg_inference_config = active_inference_config
 
     @app.get("/health")
     async def health():
@@ -176,7 +215,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     )
     try:
         app = create_app(config=config)
-    except ModelProviderLoadError as error:
+    except (EEGInferenceConfigError, ModelProviderLoadError) as error:
         raise SystemExit(str(error)) from error
     uvicorn.run(app, host=config.host, port=config.port)
 

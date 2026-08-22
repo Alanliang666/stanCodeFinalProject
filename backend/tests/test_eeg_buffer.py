@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from backend.app.eeg.buffer import EEGInferenceBuffer, WINDOW_SIZE
+from backend.app.eeg.buffer import EEGInferenceBuffer
 from backend.app.eeg.contracts import (
     EEGChunk,
     MUSE_EEG_CHANNEL_ORDER,
@@ -25,22 +25,31 @@ class EEGInferenceBufferTests(unittest.TestCase):
 
         self.assertEqual(buffer.buffered_sample_count, 58)
 
-    def test_fewer_than_256_samples_does_not_emit_window(self) -> None:
+    def test_fewer_than_configured_samples_does_not_emit_window(self) -> None:
         buffer = EEGInferenceBuffer()
 
-        candidates = buffer.append(make_chunk(WINDOW_SIZE - 1))
+        candidates = buffer.append(make_chunk(255))
 
         self.assertEqual(candidates, [])
-        self.assertEqual(buffer.buffered_sample_count, WINDOW_SIZE - 1)
+        self.assertEqual(buffer.buffered_sample_count, 255)
 
-    def test_exactly_256_samples_emits_one_time_major_window(self) -> None:
-        buffer = EEGInferenceBuffer()
+    def test_256_window_and_stride_accumulate_variable_chunks(self) -> None:
+        buffer = EEGInferenceBuffer(
+            window_samples=256,
+            stride_samples=256,
+        )
 
-        candidates = buffer.append(make_chunk(WINDOW_SIZE))
+        candidates = []
+        start_index = 0
+        for sample_count in (17, 71, 32, 136):
+            candidates.extend(
+                buffer.append(make_chunk(sample_count, start_index))
+            )
+            start_index += sample_count
 
         self.assertEqual(len(candidates), 1)
         window = candidates[0]
-        self.assertEqual(window.sample_count, WINDOW_SIZE)
+        self.assertEqual(window.sample_count, 256)
         self.assertEqual(window.samples.shape, (256, 4))
         self.assertEqual(window.timestamps.shape, (256,))
         self.assertEqual(window.channel_order, MUSE_EEG_CHANNEL_ORDER)
@@ -62,16 +71,41 @@ class EEGInferenceBufferTests(unittest.TestCase):
                 samples=samples,
             )
 
-    def test_stride_128_supports_overlapping_future_windows(self) -> None:
-        buffer = EEGInferenceBuffer(stride=128)
+    def test_512_window_and_stride_emit_non_overlapping_windows(self) -> None:
+        buffer = EEGInferenceBuffer(
+            window_samples=512,
+            stride_samples=512,
+        )
 
-        first_candidates = buffer.append(make_chunk(256))
-        second_candidates = buffer.append(make_chunk(128, start_index=256))
+        candidates = buffer.append(make_chunk(1_024))
 
-        self.assertEqual(len(first_candidates), 1)
-        self.assertEqual(len(second_candidates), 1)
-        self.assertEqual(buffer.buffered_sample_count, 128)
-        self.assertAlmostEqual(second_candidates[0].timestamps[0], 128 / 256)
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0].samples.shape, (512, 4))
+        self.assertEqual(candidates[1].samples.shape, (512, 4))
+        self.assertEqual(candidates[0].samples[0, 0], 0.0)
+        self.assertEqual(candidates[0].samples[-1, 0], 511.0)
+        self.assertEqual(candidates[1].samples[0, 0], 512.0)
+        self.assertEqual(candidates[1].samples[-1, 0], 1_023.0)
+        self.assertEqual(buffer.buffered_sample_count, 0)
+
+    def test_512_window_with_256_stride_retains_overlap(self) -> None:
+        buffer = EEGInferenceBuffer(
+            window_samples=512,
+            stride_samples=256,
+        )
+
+        candidates = buffer.append(make_chunk(768))
+
+        self.assertEqual(len(candidates), 2)
+        np.testing.assert_array_equal(
+            candidates[0].samples[:, 0],
+            np.arange(0, 512),
+        )
+        np.testing.assert_array_equal(
+            candidates[1].samples[:, 0],
+            np.arange(256, 768),
+        )
+        self.assertEqual(buffer.buffered_sample_count, 256)
 
 
 if __name__ == "__main__":

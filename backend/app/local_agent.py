@@ -7,6 +7,7 @@ from typing import Callable, Optional, Protocol
 
 import numpy as np
 
+from backend.app.config import EEGInferenceConfig
 from backend.app.eeg.buffer import EEGInferenceBuffer
 from backend.app.eeg.contracts import (
     EEGChunk,
@@ -114,6 +115,7 @@ class LocalRealtimeAgent:
         source: EEGSource,
         publisher: RealtimePublisher,
         inference_service: ModelInferenceService,
+        inference_config: EEGInferenceConfig,
         state: LocalAgentState,
         poll_interval: float,
         write_line: Callable[[str], None] = print,
@@ -123,6 +125,7 @@ class LocalRealtimeAgent:
         self.source = source
         self.publisher = publisher
         self.inference_service = inference_service
+        self.inference_config = inference_config
         self.state = state
         self.poll_interval = poll_interval
         self._write_line = write_line
@@ -148,8 +151,13 @@ class LocalRealtimeAgent:
         self._thread = None
 
     def run(self) -> None:
-        buffer = EEGInferenceBuffer()
-        validator = EEGWindowValidator()
+        buffer = EEGInferenceBuffer(
+            window_samples=self.inference_config.window_samples,
+            stride_samples=self.inference_config.stride_samples,
+        )
+        validator = EEGWindowValidator(
+            window_samples=self.inference_config.window_samples
+        )
         connected = False
         self.state.set_device_connected(False)
         self.publisher.publish_device_status(False, self.source.device_name)

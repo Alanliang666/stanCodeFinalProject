@@ -9,8 +9,11 @@ if (!cdpUrl || !applicationUrl || !screenshotPath) {
 const socket = new WebSocket(cdpUrl)
 const pending = new Map()
 const debugTargets = new Map()
+const debugScreenshots = new Map()
 const runtimeExceptions = []
 let nextId = 1
+let activeDebugState = null
+let debugStateSince = null
 
 socket.onmessage = (event) => {
   const message = JSON.parse(event.data)
@@ -33,7 +36,11 @@ socket.onmessage = (event) => {
   if (args[0]?.value !== '[CognitiveFace]') return
   const state = String(args[1]?.value ?? '').replace('state: ', '')
   const targetsObjectId = args[3]?.objectId
-  if (state && targetsObjectId) debugTargets.set(state, targetsObjectId)
+  if (state && targetsObjectId) {
+    debugTargets.set(state, targetsObjectId)
+    activeDebugState = state
+    debugStateSince = Date.now()
+  }
 }
 
 await new Promise((resolve, reject) => {
@@ -73,9 +80,7 @@ await call('Page.navigate', { url: applicationUrl })
 
 const observedProductStates = new Set()
 let currentView = null
-let neutralScreenshot = null
-let focusedStateSince = null
-const deadline = Date.now() + 14_000
+const deadline = Date.now() + 18_000
 
 while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 250))
@@ -85,38 +90,32 @@ while (Date.now() < deadline) {
     faceStatus: document.querySelector('.brain-scene__diagnostics span:nth-child(2)')?.textContent?.trim() ?? '',
     avatarStatus: document.querySelector('.brain-scene__diagnostics span:first-child')?.textContent?.trim() ?? ''
   }))()`)
-  if (
-    currentView.productState === 'Neutral'
-    || currentView.productState === 'Concentration'
-  ) {
+  if (['Relaxed · Eyes Open', 'Concentration', 'Relaxed · Eyes Closed'].includes(
+    currentView.productState,
+  )) {
     observedProductStates.add(currentView.productState)
   }
   if (
-    neutralScreenshot === null
-    && currentView.productState === 'Neutral'
-    && currentView.visualState === 'neutral'
+    activeDebugState
+    && debugStateSince !== null
+    && Date.now() - debugStateSince >= 800
+    && !debugScreenshots.has(activeDebugState)
     && currentView.faceStatus.toLowerCase().includes('native')
+    && currentView.avatarStatus.toLowerCase().includes('loaded')
   ) {
-    neutralScreenshot = await call('Page.captureScreenshot', {
+    debugScreenshots.set(activeDebugState, await call('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: true,
-    })
-  }
-  const isFocusedView = currentView.productState === 'Concentration'
-    && currentView.visualState === 'focused'
-  if (isFocusedView) {
-    focusedStateSince ??= Date.now()
-  } else {
-    focusedStateSince = null
+    }))
   }
   if (
-    observedProductStates.has('Neutral')
+    observedProductStates.has('Relaxed · Eyes Open')
     && observedProductStates.has('Concentration')
-    && debugTargets.has('neutral')
+    && observedProductStates.has('Relaxed · Eyes Closed')
+    && debugTargets.has('relaxedOpenEye')
     && debugTargets.has('focused')
-    && isFocusedView
-    && focusedStateSince !== null
-    && Date.now() - focusedStateSince >= 800
+    && debugTargets.has('relaxedCloseEye')
+    && debugScreenshots.size === 3
     && currentView.faceStatus.toLowerCase().includes('native')
     && currentView.avatarStatus.toLowerCase().includes('loaded')
   ) {
@@ -124,22 +123,36 @@ while (Date.now() < deadline) {
   }
 }
 
+console.log('Observed diagnostics before assertions:', {
+  currentView,
+  debugStates: [...debugTargets.keys()],
+  screenshotStates: [...debugScreenshots.keys()],
+  runtimeExceptions,
+})
+
 assert.deepEqual([...observedProductStates].sort(), [
   'Concentration',
-  'Neutral',
+  'Relaxed · Eyes Closed',
+  'Relaxed · Eyes Open',
 ])
-assert.ok(debugTargets.has('neutral'))
+assert.ok(debugTargets.has('relaxedOpenEye'))
 assert.ok(debugTargets.has('focused'))
-assert.equal(currentView.productState, 'Concentration')
-assert.equal(currentView.visualState, 'focused')
+assert.ok(debugTargets.has('relaxedCloseEye'))
 assert.match(currentView.faceStatus, /native/i)
 assert.match(currentView.avatarStatus, /loaded/i)
 assert.deepEqual(runtimeExceptions, [])
-assert.ok(neutralScreenshot)
+assert.equal(debugScreenshots.size, 3)
 
-const neutralWeights = await readTargetWeights(debugTargets.get('neutral'))
+const relaxedOpenEyeWeights = await readTargetWeights(
+  debugTargets.get('relaxedOpenEye'),
+)
 const focusedWeights = await readTargetWeights(debugTargets.get('focused'))
-assert.deepEqual(Object.keys(neutralWeights).sort(), [
+const relaxedCloseEyeWeights = await readTargetWeights(
+  debugTargets.get('relaxedCloseEye'),
+)
+assert.deepEqual(Object.keys(relaxedOpenEyeWeights).sort(), [
+  'browOuterUp_L',
+  'browOuterUp_R',
   'eyeLookUp_L',
   'eyeLookUp_R',
   'eyeWide_L',
@@ -163,26 +176,23 @@ assert.deepEqual(Object.keys(focusedWeights).sort(), [
   'noseSneer_L',
   'noseSneer_R',
 ].sort())
+assert.deepEqual(Object.keys(relaxedCloseEyeWeights).sort(), [
+  'eyeBlink_L',
+  'eyeBlink_R',
+  'jawOpen',
+].sort())
 
-const screenshot = await call('Page.captureScreenshot', {
-  format: 'png',
-  captureBeyondViewport: true,
-})
-writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'))
-const neutralScreenshotPath = screenshotPath.replace(/\.png$/i, '-neutral.png')
-writeFileSync(
-  neutralScreenshotPath,
-  Buffer.from(neutralScreenshot.data, 'base64'),
-)
+for (const [state, screenshot] of debugScreenshots) {
+  const statePath = screenshotPath.replace(/\.png$/i, `-${state}.png`)
+  writeFileSync(statePath, Buffer.from(screenshot.data, 'base64'))
+}
 
-console.log('=== Browser Binary Cognitive Visual Smoke ===')
+console.log('=== Browser Three-State Cognitive Visual Smoke ===')
 console.log(`Product states: ${[...observedProductStates].join(' -> ')}`)
-console.log(`Current product state: ${currentView.productState}`)
-console.log(`Current FaceCap visual state: ${currentView.visualState}`)
 console.log(`FaceCap status: ${currentView.faceStatus}`)
-console.log(`Neutral morph targets: ${Object.keys(neutralWeights).join(', ')}`)
+console.log(`Relaxed open-eye targets: ${Object.keys(relaxedOpenEyeWeights).join(', ')}`)
 console.log(`Focused morph targets: ${Object.keys(focusedWeights).join(', ')}`)
-console.log(`Neutral screenshot: ${neutralScreenshotPath}`)
+console.log(`Relaxed closed-eye targets: ${Object.keys(relaxedCloseEyeWeights).join(', ')}`)
 console.log('Result: PASS')
 
 socket.close()

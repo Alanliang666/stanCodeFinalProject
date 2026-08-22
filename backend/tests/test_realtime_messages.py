@@ -44,11 +44,12 @@ class RealtimeMessageTests(unittest.TestCase):
     def test_cognitive_prediction_contract(self) -> None:
         prediction = CognitivePrediction.from_raw_result(
             {
-                "state": "neutral",
-                "confidence": 0.82,
+                "state": "concentration",
+                "confidence": 0.88,
                 "probabilities": {
-                    "neutral": 0.82,
-                    "concentrating": 0.18,
+                    "relaxed_openeye": 0.06,
+                    "concentration": 0.88,
+                    "relaxed_closeeye": 0.06,
                 },
             }
         )
@@ -60,13 +61,14 @@ class RealtimeMessageTests(unittest.TestCase):
 
         self.assertEqual(message["type"], "cognitive_prediction")
         self.assertEqual(message["data"]["timestamp"], 1234567890.123)
-        self.assertEqual(message["data"]["state"], "neutral")
-        self.assertEqual(message["data"]["confidence"], 0.82)
+        self.assertEqual(message["data"]["state"], "concentration")
+        self.assertEqual(message["data"]["confidence"], 0.88)
         self.assertEqual(
             message["data"]["probabilities"],
             {
-                "neutral": 0.82,
-                "concentrating": 0.18,
+                "relaxed_openeye": 0.06,
+                "concentration": 0.88,
+                "relaxed_closeeye": 0.06,
             },
         )
         json.dumps(message)
@@ -77,8 +79,9 @@ class RealtimeMessageTests(unittest.TestCase):
                 state="focused",
                 confidence=0.7,
                 probabilities={
-                    "neutral": 0.7,
-                    "concentrating": 0.3,
+                    "relaxed_openeye": 0.7,
+                    "concentration": 0.2,
+                    "relaxed_closeeye": 0.1,
                 },
             )
 
@@ -87,15 +90,16 @@ class RealtimeMessageTests(unittest.TestCase):
                 state="relaxed",
                 confidence=0.7,
                 probabilities={
-                    "neutral": 0.7,
-                    "concentrating": 0.3,
+                    "relaxed_openeye": 0.7,
+                    "concentration": 0.2,
+                    "relaxed_closeeye": 0.1,
                 },
             )
 
         with self.assertRaisesRegex(TypeError, "validated CognitivePrediction"):
             create_cognitive_prediction_message(
                 {
-                    "state": "neutral",
+                    "state": "concentration",
                     "confidence": 0.7,
                     "probabilities": {},
                 }

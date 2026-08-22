@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from backend.app.config import EEGInferenceConfig
 from backend.app.model.exceptions import (
     InvalidModelOutput,
     ModelExecutionError,
@@ -19,17 +20,19 @@ from backend.app.model.provider import (
     StubModelProvider,
     create_runtime_model_provider,
     load_model_team_predict_function,
+    validate_model_provider_window,
 )
 from backend.tests.helpers import make_chunk
 
 
-def concentrating_result():
+def concentration_result():
     return {
-        "state": "concentrating",
-        "confidence": 0.9,
+        "state": "concentration",
+        "confidence": 0.88,
         "probabilities": {
-            "neutral": 0.1,
-            "concentrating": 0.9,
+            "relaxed_openeye": 0.06,
+            "concentration": 0.88,
+            "relaxed_closeeye": 0.06,
         },
     }
 
@@ -51,7 +54,7 @@ class ModelProviderTests(unittest.TestCase):
         load_count = 0
 
         def fake_predict(raw_window):
-            return concentrating_result()
+            return concentration_result()
 
         def fake_loader():
             nonlocal load_count
@@ -72,13 +75,64 @@ class ModelProviderTests(unittest.TestCase):
             "MODEL TEAM - predict_mental_state",
         )
         self.assertEqual(load_count, 1)
-        self.assertEqual(first.state, "concentrating")
-        self.assertEqual(second.state, "concentrating")
+        self.assertEqual(first.state, "concentration")
+        self.assertEqual(second.state, "concentration")
+
+    def test_model_declared_only_512_rejects_configured_256(self) -> None:
+        def fake_predict(raw_window):
+            return concentration_result()
+
+        fake_predict.SUPPORTED_WINDOW_SAMPLES = (512,)
+
+        with self.assertRaisesRegex(
+            ModelProviderLoadError,
+            "Configured EEG window: 256 samples",
+        ):
+            create_runtime_model_provider(
+                "model_team",
+                model_function_loader=lambda: fake_predict,
+                configured_window_samples=256,
+            )
+
+    def test_model_declared_512_accepts_configured_512(self) -> None:
+        def fake_predict(raw_window):
+            return concentration_result()
+
+        provider = ModelTeamFunctionProvider(
+            fake_predict,
+            supported_window_samples=(512,),
+        )
+
+        validate_model_provider_window(provider, 512)
+        prediction = ModelInferenceService(
+            provider,
+            inference_config=EEGInferenceConfig(
+                window_samples=512,
+                stride_samples=512,
+            ),
+        ).predict(make_chunk(512))
+
+        self.assertEqual(prediction.state, "concentration")
+
+    @patch("backend.app.model.provider.import_module")
+    def test_module_supported_window_metadata_is_loaded(self, import_mock) -> None:
+        def fake_predict(raw_window):
+            return concentration_result()
+
+        import_mock.return_value = SimpleNamespace(
+            predict_mental_state=fake_predict,
+            SUPPORTED_WINDOW_SAMPLES=(256, 512),
+        )
+
+        loaded_predict = load_model_team_predict_function()
+        provider = ModelTeamFunctionProvider(loaded_predict)
+
+        self.assertEqual(provider.supported_window_samples, (256, 512))
 
     def test_environment_selects_model_team_provider(self) -> None:
         with patch.dict(os.environ, {"MODEL_PROVIDER": "model_team"}):
             provider = create_runtime_model_provider(
-                model_function_loader=lambda: concentrating_result_function,
+                model_function_loader=lambda: concentration_result_function,
             )
 
         self.assertIsInstance(provider, ModelTeamFunctionProvider)
@@ -95,13 +149,17 @@ class ModelProviderTests(unittest.TestCase):
             self.assertEqual(raw_window.shape, (256, 4))
             self.assertTrue(raw_window.flags.writeable)
             raw_window[0, 0] = 999.0
-            return concentrating_result()
+            return concentration_result()
 
         prediction = ModelInferenceService(
             ModelTeamFunctionProvider(fake_predict)
         ).predict(window)
 
-        self.assertEqual(prediction.state, "concentrating")
+        self.assertEqual(prediction.state, "concentration")
+        self.assertEqual(
+            set(prediction.probabilities),
+            {"relaxed_openeye", "concentration", "relaxed_closeeye"},
+        )
         self.assertEqual(len(received), 1)
         np.testing.assert_array_equal(window.samples, original_samples)
 
@@ -113,9 +171,9 @@ class ModelProviderTests(unittest.TestCase):
                 "state": "relaxed",
                 "confidence": 0.6,
                 "probabilities": {
-                    "neutral": 0.4,
-                    "concentrating": 0.5,
-                    "relaxed": 0.1,
+                    "relaxed_openeye": 0.4,
+                    "concentration": 0.5,
+                    "relaxed_closeeye": 0.1,
                 },
             }
 
@@ -190,8 +248,8 @@ class ModelProviderTests(unittest.TestCase):
             create_runtime_model_provider("automatic")
 
 
-def concentrating_result_function(raw_window):
-    return concentrating_result()
+def concentration_result_function(raw_window):
+    return concentration_result()
 
 
 if __name__ == "__main__":

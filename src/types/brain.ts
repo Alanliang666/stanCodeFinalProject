@@ -1,8 +1,9 @@
 import type { MockEEGVisualization } from '@/types/eeg'
 
 export const COGNITIVE_STATES = [
-  'neutral',
-  'concentrating',
+  'relaxed_openeye',
+  'concentration',
+  'relaxed_closeeye',
 ] as const
 
 export type CognitiveState = (typeof COGNITIVE_STATES)[number]

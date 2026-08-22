@@ -2,9 +2,11 @@
 
 Brain AI Visualizer built with Vue 3, TypeScript, Vite, TresJS, and Three.js.
 
-The current cognitive prediction contract is binary: `neutral` or
-`concentrating`. Product UI renders these as **Neutral** and **Concentration**;
-`focused` is only an internal FaceCap visualization state.
+The cognitive prediction contract accepts exactly `relaxed_openeye`,
+`concentration`, and `relaxed_closeeye`. Product UI renders these as
+**Relaxed · Eyes Open**, **Concentration**, and **Relaxed · Eyes Closed**.
+FaceCap uses separate internal visual states: `idle`, `relaxedOpenEye`,
+`focused`, and `relaxedCloseEye`.
 
 ## Frontend development
 
@@ -50,6 +52,9 @@ back to localhost. A successful `?ws=` override is persisted for later visits.
 npm run test:frontend
 npm run build
 ```
+
+Append `?cognitiveDebug=1` to the local development URL to cycle the FaceCap
+through `relaxedOpenEye`, `focused`, and `relaxedCloseEye` every three seconds.
 
 With the synthetic backend already running, exercise the actual frontend
 WebSocket service, validators, and Pinia state using:

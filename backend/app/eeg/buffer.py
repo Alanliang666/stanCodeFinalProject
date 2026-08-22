@@ -6,6 +6,10 @@ from typing import Deque, List
 
 import numpy as np
 
+from backend.app.config import (
+    DEFAULT_EEG_STRIDE_SAMPLES,
+    DEFAULT_EEG_WINDOW_SAMPLES,
+)
 from backend.app.eeg.contracts import (
     EEGChunk,
     MUSE_EEG_CHANNEL_ORDER,
@@ -13,26 +17,23 @@ from backend.app.eeg.contracts import (
 )
 
 
-WINDOW_SECONDS = 1
-WINDOW_SIZE = SAMPLING_RATE_HZ * WINDOW_SECONDS
-DEFAULT_STRIDE = WINDOW_SIZE
-
-
 class EEGInferenceBuffer:
-    """Accumulates variable-size chunks and emits ``(256, 4)`` candidates."""
+    """Accumulates variable-size chunks and emits configured candidates."""
 
     def __init__(
         self,
-        window_size: int = WINDOW_SIZE,
-        stride: int = DEFAULT_STRIDE,
+        window_samples: int = DEFAULT_EEG_WINDOW_SAMPLES,
+        stride_samples: int = DEFAULT_EEG_STRIDE_SAMPLES,
     ) -> None:
-        if window_size <= 0:
-            raise ValueError("window_size must be positive")
-        if stride <= 0 or stride > window_size:
-            raise ValueError("stride must be between 1 and window_size")
+        if window_samples <= 0:
+            raise ValueError("window_samples must be positive")
+        if stride_samples <= 0 or stride_samples > window_samples:
+            raise ValueError(
+                "stride_samples must be between 1 and window_samples"
+            )
 
-        self.window_size = window_size
-        self.stride = stride
+        self.window_samples = window_samples
+        self.stride_samples = stride_samples
         self._timestamps: Deque[float] = deque()
         self._samples: Deque[np.ndarray] = deque()
 
@@ -57,14 +58,14 @@ class EEGInferenceBuffer:
         )
 
         candidates: List[EEGChunk] = []
-        while self.buffered_sample_count >= self.window_size:
+        while self.buffered_sample_count >= self.window_samples:
             timestamps = np.fromiter(
-                islice(self._timestamps, 0, self.window_size),
+                islice(self._timestamps, 0, self.window_samples),
                 dtype=np.float64,
-                count=self.window_size,
+                count=self.window_samples,
             )
             samples = np.vstack(
-                list(islice(self._samples, 0, self.window_size))
+                list(islice(self._samples, 0, self.window_samples))
             )
             candidates.append(
                 EEGChunk(
@@ -75,7 +76,7 @@ class EEGInferenceBuffer:
                 )
             )
 
-            for _ in range(self.stride):
+            for _ in range(self.stride_samples):
                 self._timestamps.popleft()
                 self._samples.popleft()
 

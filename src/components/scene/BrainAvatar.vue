@@ -20,7 +20,7 @@ const props = withDefaults(
   }>(),
   {
     modelUrl: bundledAvatarUrl,
-    cognitiveVisualState: 'neutral',
+    cognitiveVisualState: 'idle',
   },
 )
 

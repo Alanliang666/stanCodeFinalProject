@@ -10,7 +10,7 @@ import type { CognitiveVisualState, FacialMorphState } from '@/types/avatar'
 import { getCognitiveFacePreset } from '@/visualization/cognitiveFacePresets'
 import {
   composeMorphLayers,
-  getBlinkLayer,
+  getBlinkLayerForVisualState,
 } from '@/visualization/expressionLayers'
 import {
   resolveAvailableMorphWeights,
@@ -23,8 +23,9 @@ const EXPRESSION_SMOOTHING_SPEED = 7
 const MAX_FRAME_DELTA = 0.1
 const COGNITIVE_DEBUG_STEP_SECONDS = 3
 const COGNITIVE_DEBUG_STATES = [
-  'neutral',
+  'relaxedOpenEye',
   'focused',
+  'relaxedCloseEye',
 ] as const satisfies readonly CognitiveVisualState[]
 
 const isCognitiveDebugEnabled = import.meta.env.DEV
@@ -84,7 +85,7 @@ export function useExpressionController(
       ? COGNITIVE_DEBUG_STATES[debugStateIndex]
       : cognitiveVisualState.value
     const cognitiveLayer = getCognitiveFacePreset(effectiveState)
-    const blinkLayer = getBlinkLayer(elapsed)
+    const blinkLayer = getBlinkLayerForVisualState(effectiveState, elapsed)
     const composedWeights = composeMorphLayers(cognitiveLayer, blinkLayer)
 
     if (isCognitiveDebugEnabled && effectiveState !== activeDebugState) {

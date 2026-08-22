@@ -1,4 +1,5 @@
 import { clamp } from '@/utils/clamp'
+import type { CognitiveVisualState } from '@/types/avatar'
 import type { MorphWeightMap } from '@/visualization/facialExpressions'
 
 const BLINK_INTERVAL_SECONDS = 4.2
@@ -15,6 +16,13 @@ export function getBlinkLayer(elapsed: number): MorphWeightMap {
     eyeBlink_L: weight,
     eyeBlink_R: weight,
   }
+}
+
+export function getBlinkLayerForVisualState(
+  state: CognitiveVisualState,
+  elapsed: number,
+): MorphWeightMap {
+  return state === 'relaxedCloseEye' ? {} : getBlinkLayer(elapsed)
 }
 
 export function composeMorphLayers(

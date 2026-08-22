@@ -18,11 +18,11 @@ function randomWalk(value: number, volatility: number): number {
   return clamp(value + (Math.random() - 0.5) * volatility)
 }
 
-function createProbabilities(
+export function createMockProbabilities(
   state: CognitiveState,
   confidence: number,
 ): Record<CognitiveState, number> {
-  const remainingProbability = 1 - confidence
+  const remainingProbability = (1 - confidence) / (COGNITIVE_STATES.length - 1)
   return Object.fromEntries(
     COGNITIVE_STATES.map((candidate) => [
       candidate,
@@ -34,12 +34,14 @@ function createProbabilities(
 export function getMockCognitiveState(elapsedMs: number): CognitiveState {
   const phase = Math.floor(
     Math.max(0, elapsedMs) / MOCK_COGNITIVE_STATE_DURATION_MS,
-  ) % 2
-  return phase === 0 ? 'neutral' : 'concentrating'
+  ) % COGNITIVE_STATES.length
+  return COGNITIVE_STATES[phase] ?? COGNITIVE_STATES[0]
 }
 
 function getMockConfidence(state: CognitiveState): number {
-  return state === 'neutral' ? 0.82 : 0.90
+  if (state === 'relaxed_openeye') return 0.82
+  if (state === 'concentration') return 0.88
+  return 0.84
 }
 
 function createInitialPrediction(): BrainPrediction {
@@ -53,9 +55,9 @@ function createInitialPrediction(): BrainPrediction {
       })),
     },
     cognition: {
-      state: 'neutral',
+      state: 'relaxed_openeye',
       confidence: 0.82,
-      probabilities: createProbabilities('neutral', 0.82),
+      probabilities: createMockProbabilities('relaxed_openeye', 0.82),
     },
   }
 }
@@ -113,7 +115,7 @@ export class MockBrainService {
       cognition: {
         state,
         confidence,
-        probabilities: createProbabilities(state, confidence),
+        probabilities: createMockProbabilities(state, confidence),
       },
     }
   }
