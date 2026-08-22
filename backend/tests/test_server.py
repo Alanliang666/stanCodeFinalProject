@@ -4,6 +4,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
+from backend.app.config import EEGInferenceConfig
 from backend.app.server import ServerConfig, create_app
 from backend.app.model.provider import ModelTeamFunctionProvider
 
@@ -25,6 +26,11 @@ class LocalAgentServerTests(unittest.TestCase):
                     "status": "ok",
                     "device_connected": False,
                     "model_provider": "STUB MODEL",
+                    "sampling_rate_hz": 256,
+                    "inference_window_samples": 256,
+                    "inference_window_sec": 1.0,
+                    "inference_stride_samples": 256,
+                    "inference_stride_sec": 1.0,
                 },
             )
 
@@ -60,17 +66,27 @@ class LocalAgentServerTests(unittest.TestCase):
         )
         self.assertIn("Source: MOCK / SYNTHETIC STREAM", log_lines)
         self.assertIn("Model provider: STUB MODEL", log_lines)
+        self.assertIn("EEG sampling rate: 256 Hz", log_lines)
+        self.assertIn(
+            "Inference window: 256 samples (1.000 sec)",
+            log_lines,
+        )
+        self.assertIn(
+            "Inference stride: 256 samples (1.000 sec)",
+            log_lines,
+        )
 
     def test_synthetic_source_is_independent_from_model_team_provider(self) -> None:
         def fake_predict_mental_state(raw_window):
             self.assertEqual(raw_window.shape, (256, 4))
             self.assertTrue(raw_window.flags.writeable)
             return {
-                "state": "concentrating",
-                "confidence": 0.9,
+                "state": "concentration",
+                "confidence": 0.88,
                 "probabilities": {
-                    "neutral": 0.1,
-                    "concentrating": 0.9,
+                    "relaxed_openeye": 0.06,
+                    "concentration": 0.88,
+                    "relaxed_closeeye": 0.06,
                 },
             }
 
@@ -97,11 +113,57 @@ class LocalAgentServerTests(unittest.TestCase):
                         break
 
         self.assertIsNotNone(prediction)
-        self.assertEqual(prediction["data"]["state"], "concentrating")
+        self.assertEqual(prediction["data"]["state"], "concentration")
         self.assertEqual(
             prediction["data"]["probabilities"],
-            {"neutral": 0.1, "concentrating": 0.9},
+            {
+                "relaxed_openeye": 0.06,
+                "concentration": 0.88,
+                "relaxed_closeeye": 0.06,
+            },
         )
+
+    def test_512_by_256_config_is_exposed_and_runs_synthetic_chunks(self) -> None:
+        received_shapes = []
+
+        def fake_predict_mental_state(raw_window):
+            received_shapes.append(raw_window.shape)
+            return {
+                "state": "concentration",
+                "confidence": 0.88,
+                "probabilities": {
+                    "relaxed_openeye": 0.06,
+                    "concentration": 0.88,
+                    "relaxed_closeeye": 0.06,
+                },
+            }
+
+        app = create_app(
+            config=ServerConfig(source_mode="synthetic"),
+            inference_config=EEGInferenceConfig(
+                window_samples=512,
+                stride_samples=256,
+            ),
+            model_provider=ModelTeamFunctionProvider(
+                fake_predict_mental_state,
+                supported_window_samples=(512,),
+            ),
+            start_agent=True,
+            write_line=lambda line: None,
+        )
+
+        with TestClient(app) as client:
+            health = client.get("/health").json()
+            with client.websocket_connect("/ws") as websocket:
+                for _ in range(30):
+                    if websocket.receive_json()["type"] == "cognitive_prediction":
+                        break
+
+        self.assertEqual(health["inference_window_samples"], 512)
+        self.assertEqual(health["inference_window_sec"], 2.0)
+        self.assertEqual(health["inference_stride_samples"], 256)
+        self.assertEqual(health["inference_stride_sec"], 1.0)
+        self.assertIn((512, 4), received_shapes)
 
 
 if __name__ == "__main__":

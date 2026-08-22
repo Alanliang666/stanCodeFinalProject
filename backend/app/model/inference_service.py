@@ -4,11 +4,15 @@ from typing import Optional
 
 import numpy as np
 
+from backend.app.config import (
+    DEFAULT_EEG_INFERENCE_CONFIG,
+    EEGInferenceConfig,
+)
 from backend.app.eeg.contracts import EEGChunk
 from backend.app.eeg.window_validator import EEGWindowValidator
 from backend.app.model.contracts import (
     CognitivePrediction,
-    MODEL_INPUT_CONTRACT,
+    ModelInputContract,
 )
 from backend.app.model.exceptions import (
     InvalidModelInput,
@@ -25,9 +29,22 @@ class ModelInferenceService:
         self,
         provider: ModelProvider,
         window_validator: Optional[EEGWindowValidator] = None,
+        inference_config: EEGInferenceConfig = DEFAULT_EEG_INFERENCE_CONFIG,
     ) -> None:
         self.provider = provider
-        self._window_validator = window_validator or EEGWindowValidator()
+        if (
+            window_validator is not None
+            and window_validator.window_samples
+            != inference_config.window_samples
+        ):
+            raise ValueError(
+                "window validator and inference config must use the same "
+                "window_samples"
+            )
+        self._window_validator = window_validator or EEGWindowValidator(
+            window_samples=inference_config.window_samples
+        )
+        self._input_contract = ModelInputContract.from_config(inference_config)
 
     def predict(self, window: EEGChunk) -> CognitivePrediction:
         validation = self._window_validator.validate(window)
@@ -37,7 +54,7 @@ class ModelInferenceService:
             )
 
         try:
-            MODEL_INPUT_CONTRACT.validate_window(window)
+            self._input_contract.validate_window(window)
         except (TypeError, ValueError) as error:
             raise InvalidModelInput(str(error)) from error
 

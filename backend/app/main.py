@@ -4,7 +4,11 @@ import argparse
 import time
 from typing import Callable, Optional, Sequence
 
-from backend.app.eeg.buffer import EEGInferenceBuffer, WINDOW_SIZE
+from backend.app.config import (
+    EEGInferenceConfigError,
+    load_eeg_inference_config,
+)
+from backend.app.eeg.buffer import EEGInferenceBuffer
 from backend.app.eeg.contracts import (
     EEGChunk,
     MUSE_EEG_CHANNEL_ORDER,
@@ -29,7 +33,7 @@ from backend.app.muse.muse_collector import MuseCollector
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Collect Muse 2 EEG and report valid one-second windows.",
+        description="Collect Muse 2 EEG and report valid inference windows.",
     )
     parser.add_argument(
         "--mac-address",
@@ -92,15 +96,24 @@ def run(
     if poll_interval <= 0:
         raise ValueError("poll_interval must be positive")
 
+    inference_config = load_eeg_inference_config()
     collector = MuseCollector(
         mac_address=mac_address,
         serial_number=serial_number,
     )
-    buffer = EEGInferenceBuffer()
-    validator = EEGWindowValidator()
-    model_provider = create_runtime_model_provider()
+    buffer = EEGInferenceBuffer(
+        window_samples=inference_config.window_samples,
+        stride_samples=inference_config.stride_samples,
+    )
+    validator = EEGWindowValidator(
+        window_samples=inference_config.window_samples
+    )
+    model_provider = create_runtime_model_provider(
+        configured_window_samples=inference_config.window_samples
+    )
     inference_service = ModelInferenceService(
         provider=model_provider,
+        inference_config=inference_config,
         window_validator=validator,
     )
     diagnostics: Optional[MusePhase1Diagnostics] = None
@@ -116,6 +129,20 @@ def run(
             print(channel)
         print("Model provider:")
         print(model_provider.display_name)
+        print("Inference window:")
+        print(
+            "{0} samples ({1:.3f} sec)".format(
+                inference_config.window_samples,
+                inference_config.window_size_sec,
+            )
+        )
+        print("Inference stride:")
+        print(
+            "{0} samples ({1:.3f} sec)".format(
+                inference_config.stride_samples,
+                inference_config.stride_sec,
+            )
+        )
 
         while True:
             chunk = collector.read_chunk()
@@ -133,13 +160,15 @@ def run(
                 print(
                     "{0} / {1}".format(
                         buffer.buffered_sample_count,
-                        WINDOW_SIZE,
+                        inference_config.window_samples,
                     )
                 )
 
             for candidate in candidates:
                 print("Buffer:")
-                print("{0} / {0}".format(WINDOW_SIZE))
+                print(
+                    "{0} / {0}".format(inference_config.window_samples)
+                )
                 validation = validator.validate(candidate)
                 candidate_diagnostic = diagnostics.observe_candidate(
                     candidate,
@@ -179,7 +208,7 @@ def run(
                 print(
                     "{0} / {1}".format(
                         buffer.buffered_sample_count,
-                        WINDOW_SIZE,
+                        inference_config.window_samples,
                     )
                 )
 
@@ -202,7 +231,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             serial_number=args.serial_number,
             poll_interval=args.poll_interval,
         )
-    except ModelProviderLoadError as error:
+    except (EEGInferenceConfigError, ModelProviderLoadError) as error:
         raise SystemExit(str(error)) from error
 
 

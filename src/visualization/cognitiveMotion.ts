@@ -24,8 +24,8 @@ export interface CognitiveMotionPreset {
 }
 
 const COGNITIVE_MOTION_PRESETS = {
-  neutral: {
-    label: 'Idle',
+  relaxed_openeye: {
+    label: 'Relaxed · Eyes Open',
     rotationSpeed: 0.04,
     floatAmplitude: 0.02,
     floatSpeed: 0.8,
@@ -46,8 +46,8 @@ const COGNITIVE_MOTION_PRESETS = {
     haloPulseSpeed: 0.65,
     haloColor: '#51e6c4',
   },
-  concentrating: {
-    label: 'Stable',
+  concentration: {
+    label: 'Concentration',
     rotationSpeed: 0,
     floatAmplitude: 0,
     floatSpeed: 0.8,
@@ -67,6 +67,28 @@ const COGNITIVE_MOTION_PRESETS = {
     haloScale: 0.92,
     haloPulseSpeed: 0.35,
     haloColor: '#7f91ff',
+  },
+  relaxed_closeeye: {
+    label: 'Relaxed · Eyes Closed',
+    rotationSpeed: 0.015,
+    floatAmplitude: 0.012,
+    floatSpeed: 0.55,
+    tiltAmplitude: 0.005,
+    gazeX: 0,
+    gazeY: 0,
+    gazeDrift: 0,
+    gazeSpeed: 0.45,
+    headTilt: 0.01,
+    headSway: 0.012,
+    headSpeed: 0.42,
+    particleDensity: 0.16,
+    particleSpread: 0.82,
+    particleSpeed: 0.05,
+    particleColor: '#8debd5',
+    haloOpacity: 0.20,
+    haloScale: 0.96,
+    haloPulseSpeed: 0.28,
+    haloColor: '#66dcc5',
   },
 } satisfies Record<CognitiveState, CognitiveMotionPreset>
 

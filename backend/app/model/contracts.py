@@ -8,22 +8,25 @@ from typing import Any, Literal, Mapping, Tuple
 
 import numpy as np
 
-from backend.app.eeg.buffer import WINDOW_SECONDS, WINDOW_SIZE
+from backend.app.config import (
+    DEFAULT_EEG_INFERENCE_CONFIG,
+    EEGInferenceConfig,
+)
 from backend.app.eeg.contracts import (
     EEGChunk,
     MUSE_EEG_CHANNEL_ORDER,
-    SAMPLING_RATE_HZ,
 )
 
 
-CognitiveState = Literal["neutral", "concentrating"]
+CognitiveState = Literal[
+    "relaxed_openeye",
+    "concentration",
+    "relaxed_closeeye",
+]
 MODEL_OUTPUT_CLASSES: Tuple[str, ...] = (
-    "neutral",
-    "concentrating",
-)
-MODEL_RAW_WINDOW_SHAPE = (
-    WINDOW_SIZE,
-    len(MUSE_EEG_CHANNEL_ORDER),
+    "relaxed_openeye",
+    "concentration",
+    "relaxed_closeeye",
 )
 PROBABILITY_TOLERANCE = 1e-6
 
@@ -31,9 +34,24 @@ PROBABILITY_TOLERANCE = 1e-6
 @dataclass(frozen=True)
 class ModelInputContract:
     sampling_rate_hz: int
-    window_seconds: int
+    window_size_sec: float
     channel_order: Tuple[str, ...]
     raw_shape: Tuple[int, int]
+
+    @classmethod
+    def from_config(
+        cls,
+        config: EEGInferenceConfig,
+    ) -> "ModelInputContract":
+        return cls(
+            sampling_rate_hz=config.sampling_rate_hz,
+            window_size_sec=config.window_size_sec,
+            channel_order=MUSE_EEG_CHANNEL_ORDER,
+            raw_shape=(
+                config.window_samples,
+                len(MUSE_EEG_CHANNEL_ORDER),
+            ),
+        )
 
     def validate_raw_window(self, raw_window: np.ndarray) -> None:
         if not isinstance(raw_window, np.ndarray):
@@ -58,11 +76,8 @@ class ModelInputContract:
         self.validate_raw_window(window.samples)
 
 
-MODEL_INPUT_CONTRACT = ModelInputContract(
-    sampling_rate_hz=SAMPLING_RATE_HZ,
-    window_seconds=WINDOW_SECONDS,
-    channel_order=MUSE_EEG_CHANNEL_ORDER,
-    raw_shape=MODEL_RAW_WINDOW_SHAPE,
+MODEL_INPUT_CONTRACT = ModelInputContract.from_config(
+    DEFAULT_EEG_INFERENCE_CONFIG
 )
 
 

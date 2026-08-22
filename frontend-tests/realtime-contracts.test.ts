@@ -7,6 +7,7 @@ import {
   parseRealtimeMessage,
 } from '../src/services/brain/realtimeMessageValidators'
 import {
+  createMockProbabilities,
   getMockCognitiveState,
   MOCK_COGNITIVE_STATE_DURATION_MS,
 } from '../src/services/brain/mockBrainService'
@@ -25,31 +26,68 @@ test('accepts the backend device_status contract', () => {
   }), true)
 })
 
-test('accepts variable-size eeg_chunk data with shape (N, 4)', () => {
-  assert.equal(isEEGChunkMessage({
-    type: 'eeg_chunk',
-    data: {
-      sampling_rate_hz: 256,
-      channel_order: channelOrder,
-      timestamps: [1, 1 + 1 / 256],
-      samples: [[1, 2, 3, 4], [5, 6, 7, 8]],
-    },
-  }), true)
+test('accepts variable-size eeg_chunk data independent of model window', () => {
+  for (const sampleCount of [1, 17, 32, 256, 512]) {
+    const timestamps = Array.from(
+      { length: sampleCount },
+      (_, index) => 1 + index / 256,
+    )
+    const samples = Array.from(
+      { length: sampleCount },
+      (_, index) => [index, index + 1, index + 2, index + 3],
+    )
+    assert.equal(isEEGChunkMessage({
+      type: 'eeg_chunk',
+      data: {
+        sampling_rate_hz: 256,
+        channel_order: channelOrder,
+        timestamps,
+        samples,
+      },
+    }), true)
+  }
 })
 
-test('accepts the formal cognitive_prediction contract', () => {
-  assert.equal(isCognitivePredictionMessage({
-    type: 'cognitive_prediction',
-    data: {
-      timestamp: 1_234_567_890.123,
-      state: 'neutral',
+test('accepts all three formal cognitive_prediction states', () => {
+  const predictions = [
+    {
+      state: 'relaxed_openeye',
       confidence: 0.82,
       probabilities: {
-        neutral: 0.82,
-        concentrating: 0.18,
+        relaxed_openeye: 0.82,
+        concentration: 0.10,
+        relaxed_closeeye: 0.08,
       },
     },
-  }), true)
+    {
+      state: 'concentration',
+      confidence: 0.88,
+      probabilities: {
+        relaxed_openeye: 0.06,
+        concentration: 0.88,
+        relaxed_closeeye: 0.06,
+      },
+    },
+    {
+      state: 'relaxed_closeeye',
+      confidence: 0.84,
+      probabilities: {
+        relaxed_openeye: 0.08,
+        concentration: 0.08,
+        relaxed_closeeye: 0.84,
+      },
+    },
+  ]
+
+  for (const prediction of predictions) {
+    assert.equal(isCognitivePredictionMessage({
+      type: 'cognitive_prediction',
+      data: {
+        timestamp: 1_234_567_890.123,
+        ...prediction,
+      },
+    }), true)
+  }
 })
 
 test('ignores unknown or invalid JSON messages safely', () => {
@@ -78,63 +116,126 @@ test('rejects malformed samples and wrong channel order', () => {
   }), false)
 })
 
-test('rejects illegal cognitive states and malformed probabilities', () => {
+test('rejects legacy or unknown states, incomplete classes, and extras', () => {
   const base = {
     type: 'cognitive_prediction',
     data: {
       timestamp: 1,
-      state: 'focused',
-      confidence: 0.7,
+      state: 'concentration',
+      confidence: 0.88,
       probabilities: {
-        neutral: 0.7,
-        concentrating: 0.3,
+        relaxed_openeye: 0.06,
+        concentration: 0.88,
+        relaxed_closeeye: 0.06,
       },
     },
   }
-  assert.equal(isCognitivePredictionMessage(base), false)
-  assert.equal(isCognitivePredictionMessage({
-    ...base,
-    data: {
-      ...base.data,
-      state: 'neutral',
-      probabilities: { neutral: 0.7 },
-    },
-  }), false)
+  for (const legacyState of ['neutral', 'concentrating', 'focused', 'unknown']) {
+    assert.equal(isCognitivePredictionMessage({
+      ...base,
+      data: { ...base.data, state: legacyState },
+    }), false)
+  }
 
   assert.equal(isCognitivePredictionMessage({
     ...base,
     data: {
       ...base.data,
-      state: 'neutral',
       probabilities: {
-        neutral: 0.7,
-        concentrating: 0.3,
-        relaxed: 0,
+        relaxed_openeye: 0.12,
+        concentration: 0.88,
       },
     },
   }), false)
 
-  assert.equal(isCognitivePredictionMessage({
-    ...base,
-    data: {
-      ...base.data,
-      state: 'relaxed',
-    },
-  }), false)
+  for (const legacyClass of ['neutral', 'concentrating', 'unknown']) {
+    assert.equal(isCognitivePredictionMessage({
+      ...base,
+      data: {
+        ...base.data,
+        probabilities: {
+          ...base.data.probabilities,
+          [legacyClass]: 0,
+        },
+      },
+    }), false)
+  }
 })
 
-test('frontend mock uses a deterministic three-second binary cycle', () => {
-  assert.equal(getMockCognitiveState(0), 'neutral')
+test('rejects non-finite, sum, argmax, and confidence invariant violations', () => {
+  const base = {
+    type: 'cognitive_prediction',
+    data: {
+      timestamp: 1,
+      state: 'concentration',
+      confidence: 0.88,
+      probabilities: {
+        relaxed_openeye: 0.06,
+        concentration: 0.88,
+        relaxed_closeeye: 0.06,
+      },
+    },
+  }
+  const invalidData = [
+    {
+      ...base.data,
+      probabilities: {
+        ...base.data.probabilities,
+        relaxed_openeye: Number.NaN,
+      },
+    },
+    {
+      ...base.data,
+      probabilities: {
+        relaxed_openeye: 0.10,
+        concentration: 0.70,
+        relaxed_closeeye: 0.10,
+      },
+      confidence: 0.70,
+    },
+    {
+      ...base.data,
+      state: 'relaxed_openeye',
+      confidence: 0.06,
+    },
+    {
+      ...base.data,
+      confidence: 0.80,
+    },
+  ]
+
+  for (const data of invalidData) {
+    assert.equal(isCognitivePredictionMessage({ ...base, data }), false)
+  }
+})
+
+test('frontend mock uses a deterministic three-state canonical cycle', () => {
+  assert.equal(getMockCognitiveState(0), 'relaxed_openeye')
   assert.equal(
     getMockCognitiveState(MOCK_COGNITIVE_STATE_DURATION_MS - 1),
-    'neutral',
+    'relaxed_openeye',
   )
   assert.equal(
     getMockCognitiveState(MOCK_COGNITIVE_STATE_DURATION_MS),
-    'concentrating',
+    'concentration',
   )
   assert.equal(
     getMockCognitiveState(MOCK_COGNITIVE_STATE_DURATION_MS * 2),
-    'neutral',
+    'relaxed_closeeye',
   )
+  assert.equal(
+    getMockCognitiveState(MOCK_COGNITIVE_STATE_DURATION_MS * 3),
+    'relaxed_openeye',
+  )
+
+  const probabilities = createMockProbabilities('concentration', 0.88)
+  assert.deepEqual(Object.keys(probabilities), [
+    'relaxed_openeye',
+    'concentration',
+    'relaxed_closeeye',
+  ])
+  assert.ok(Math.abs(Object.values(probabilities).reduce(
+    (sum, probability) => sum + probability,
+    0,
+  ) - 1) <= 1e-6)
 })

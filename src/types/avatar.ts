@@ -15,5 +15,7 @@ export interface FacialMorphState {
 }
 
 export type CognitiveVisualState =
-  | 'neutral'
+  | 'idle'
+  | 'relaxedOpenEye'
   | 'focused'
+  | 'relaxedCloseEye'

@@ -44,8 +44,9 @@ function toPercentage(value: number): number {
 }
 
 const cognitiveStateLabels: Record<CognitiveState, string> = {
-  neutral: 'Neutral',
-  concentrating: 'Concentration',
+  relaxed_openeye: 'Relaxed · Eyes Open',
+  concentration: 'Concentration',
+  relaxed_closeeye: 'Relaxed · Eyes Closed',
 }
 </script>
 

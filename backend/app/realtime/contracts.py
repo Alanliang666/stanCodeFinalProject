@@ -2,6 +2,8 @@
 
 from typing import Dict, List, Literal, TypedDict, Union
 
+from backend.app.model.contracts import CognitiveState
+
 
 class DeviceStatusData(TypedDict):
     connected: bool
@@ -29,9 +31,9 @@ class EEGChunkMessage(TypedDict):
 
 class CognitivePredictionData(TypedDict):
     timestamp: float
-    state: str
+    state: CognitiveState
     confidence: float
-    probabilities: Dict[str, float]
+    probabilities: Dict[CognitiveState, float]
 
 
 class CognitivePredictionMessage(TypedDict):

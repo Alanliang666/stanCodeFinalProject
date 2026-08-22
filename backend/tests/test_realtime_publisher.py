@@ -17,14 +17,15 @@ from backend.app.realtime.publisher import (
 from backend.tests.helpers import make_chunk
 
 
-def neutral_prediction() -> CognitivePrediction:
+def concentration_prediction() -> CognitivePrediction:
     return CognitivePrediction.from_raw_result(
         {
-            "state": "neutral",
-            "confidence": 0.82,
+            "state": "concentration",
+            "confidence": 0.88,
             "probabilities": {
-                "neutral": 0.82,
-                "concentrating": 0.18,
+                "relaxed_openeye": 0.06,
+                "concentration": 0.88,
+                "relaxed_closeeye": 0.06,
             },
         }
     )
@@ -44,7 +45,9 @@ class LatestMessageBufferTests(unittest.TestCase):
     def test_control_messages_are_delivered_before_eeg(self) -> None:
         buffer = LatestMessageBuffer()
         buffer.offer(create_eeg_chunk_message(make_chunk(12)))
-        buffer.offer(create_cognitive_prediction_message(neutral_prediction()))
+        buffer.offer(
+            create_cognitive_prediction_message(concentration_prediction())
+        )
         buffer.offer(create_device_status_message(True))
 
         messages = buffer.take_all()
@@ -68,7 +71,7 @@ class QueuedRealtimePublisherTests(unittest.IsolatedAsyncioTestCase):
 
         publisher.publish_device_status(True)
         publisher.publish_eeg_chunk(make_chunk(12))
-        publisher.publish_prediction(neutral_prediction(), timestamp=10.0)
+        publisher.publish_prediction(concentration_prediction(), timestamp=10.0)
         await asyncio.sleep(0.02)
         await publisher.stop_delivery()
 

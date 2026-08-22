@@ -8,8 +8,9 @@ import type {
 
 const REQUIRED_CHANNEL_ORDER = ['TP9', 'AF7', 'AF8', 'TP10'] as const
 const REQUIRED_COGNITIVE_STATES = [
-  'neutral',
-  'concentrating',
+  'relaxed_openeye',
+  'concentration',
+  'relaxed_closeeye',
 ] as const satisfies readonly CognitiveState[]
 const PROBABILITY_TOLERANCE = 1e-6
 

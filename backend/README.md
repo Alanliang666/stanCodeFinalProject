@@ -1,7 +1,7 @@
 # Muse 2 EEG backend
 
 Phase 1 provides BrainFlow acquisition, a variable-chunk EEG contract, a
-one-second inference buffer, and timestamp validation. Phase 2 connects valid
+configurable inference buffer, and timestamp validation. Phase 2 connects valid
 windows to a provider abstraction and validates cognitive prediction output.
 Phase 3 exposes the Local Realtime Agent over HTTP and WebSocket. The current
 runtime uses an explicitly labeled stub and does not contain a trained model.
@@ -40,22 +40,56 @@ continuous timestamp-interval statistics, and counts above 1.5x and 2.0x the
 expected sample interval. FAIL events also print their reason and maximum gap.
 
 The current development runtime prints `STUB MODEL` during startup. Its
-time-based binary demo alternates every three seconds and only verifies wiring;
-it must not be interpreted as a real cognitive prediction or as an inference
-from the EEG values.
+time-based three-state demo advances every three seconds and only verifies
+wiring; it must not be interpreted as a real cognitive prediction or as an
+inference from the EEG values.
 
 ## Model Team Integration Contract
 
 The Backend passes only an `EEGWindowValidator`-approved raw window to the model
 provider.
 
+### Inference window configuration
+
+The inference branch reads its window and stride once at runtime from centralized
+`EEGInferenceConfig`. The defaults preserve the existing one-second,
+non-overlapping behavior:
+
+```powershell
+$env:EEG_WINDOW_SAMPLES = "256"
+$env:EEG_STRIDE_SAMPLES = "256"
+```
+
+For a two-second non-overlapping model:
+
+```powershell
+$env:EEG_WINDOW_SAMPLES = "512"
+$env:EEG_STRIDE_SAMPLES = "512"
+```
+
+For a two-second window with a prediction hop every one second:
+
+```powershell
+$env:EEG_WINDOW_SAMPLES = "512"
+$env:EEG_STRIDE_SAMPLES = "256"
+```
+
+`EEG_WINDOW_SAMPLES` is how much EEG each inference sees.
+`EEG_STRIDE_SAMPLES` is how many samples the buffer advances before producing
+the next inference window. Both units are samples. Sampling remains fixed at
+256 Hz, so their displayed durations are derived by dividing by 256.
+
+Both values must be positive integers and stride must not exceed window size.
+The source-side `eeg_chunk` remains a variable-size `(N, 4)` message; these
+settings only affect inference aggregation.
+
 Input:
 
 ```text
 type: numpy.ndarray
-shape: (256, 4)
+shape: (EEG_WINDOW_SAMPLES, 4)
 sampling rate: 256 Hz
-window: 1 second
+window duration: EEG_WINDOW_SAMPLES / 256 seconds
 column 0: TP9
 column 1: AF7
 column 2: AF8
@@ -64,13 +98,21 @@ column 3: TP10
 
 Output:
 
-```text
-state: neutral | concentrating
-confidence: finite number from 0 to 1
-probabilities:
-  neutral: 0 to 1
-  concentrating: 0 to 1
+```json
+{
+  "state": "concentration",
+  "confidence": 0.88,
+  "probabilities": {
+    "relaxed_openeye": 0.06,
+    "concentration": 0.88,
+    "relaxed_closeeye": 0.06
+  }
+}
 ```
+
+The accepted states and exact probability keys are `relaxed_openeye`,
+`concentration`, and `relaxed_closeeye`. Missing or additional classes are
+invalid model output.
 
 Probabilities must sum to approximately 1. `state` must be a highest-probability
 class, and `confidence` must equal `probabilities[state]` within floating-point
@@ -123,7 +165,20 @@ def predict_mental_state(raw_window: numpy.ndarray) -> Mapping[str, object]:
 
 The module should load its model, scaler, and other immutable artifacts once at
 module import or provider initialization—not once per EEG window. It owns all
-preprocessing and must return the binary output contract above.
+preprocessing and must return the three-class output contract above.
+
+The Model Team may optionally declare its accepted input sizes in the inference
+module:
+
+```python
+SUPPORTED_WINDOW_SAMPLES = (512,)
+```
+
+Multiple sizes are allowed, for example `(256, 512)`. A model that supports only
+one size may instead declare `WINDOW_SIZE_SAMPLES = 512`. When metadata is
+present, startup fails if `EEG_WINDOW_SAMPLES` is incompatible. The Backend does
+not pad, truncate, reshape, or fall back to the stub. Metadata is optional until
+the Model Team package provides it.
 
 The repository currently does not contain `backend/app/model/inference.py` or
 trained artifacts. Selecting `MODEL_PROVIDER=model_team` before installing them
@@ -202,7 +257,12 @@ EEG:
 {
   "status": "ok",
   "device_connected": true,
-  "model_provider": "STUB MODEL"
+  "model_provider": "STUB MODEL",
+  "sampling_rate_hz": 256,
+  "inference_window_samples": 512,
+  "inference_window_sec": 2.0,
+  "inference_stride_samples": 256,
+  "inference_stride_sec": 1.0
 }
 ```
 

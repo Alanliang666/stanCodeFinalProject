@@ -54,10 +54,14 @@ assert.equal(store.deviceStatus.device, 'Synthetic Muse 2')
 assert.equal(store.eegChunk?.data.channel_order.join(','), 'TP9,AF7,AF8,TP10')
 assert.ok((store.eegChunk?.data.samples.length ?? 0) > 0)
 const receivedState = store.prediction?.cognition.state
-assert.ok(receivedState === 'neutral' || receivedState === 'concentrating')
-assert.equal(
-  store.prediction?.cognition.confidence,
-  receivedState === 'neutral' ? 0.82 : 0.90,
+assert.ok([
+  'relaxed_openeye',
+  'concentration',
+  'relaxed_closeeye',
+].includes(receivedState ?? ''))
+assert.deepEqual(
+  Object.keys(store.prediction?.cognition.probabilities ?? {}),
+  ['relaxed_openeye', 'concentration', 'relaxed_closeeye'],
 )
 
 console.log('=== Frontend Synthetic Realtime Smoke ===')
